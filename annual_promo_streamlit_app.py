@@ -142,7 +142,7 @@ st.markdown('<div class="promo-header"><h1>Annual Promotion Sale</h1></div>', un
 
 # ------------------------- Load Data -------------------------
 # Adjust the CSV file path as needed.
-csv_file = r"C:\Users\amrit.ramadugu\Downloads\Streamlit annual promo app\model-export 20-02-25.csv"
+csv_file = "model-export 20-02-25.csv"
 df = pd.read_csv(csv_file)
 
 # Drop rows missing Category or Series.
