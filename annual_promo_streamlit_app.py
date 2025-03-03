@@ -4,7 +4,7 @@ import pandas as pd
 import re
 
 # ------------------------- Page Setup -------------------------
-st.set_page_config(page_title="Annual Promotion Sale", layout="wide")
+st.set_page_config(page_title="Annual Promotion", layout="wide")
 
 # ------------------------- Custom CSS -------------------------
 st.markdown("""
@@ -58,6 +58,18 @@ st.markdown("""
     .buy-button:hover {
         background-color: #bd2130;
     }
+    /* Style for HTML details element */
+    details {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+    details summary {
+        outline: none;
+        cursor: pointer;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -90,7 +102,6 @@ if selected_series:
     filtered_df = filtered_df[filtered_df["Series"].isin(selected_series)]
 
 # ------------------------- Specification Filters -------------------------
-# Always initialize spec_filters so it exists.
 spec_filters = {}
 
 if selected_series:
@@ -124,7 +135,6 @@ if selected_series:
                     
         elif spec_type == "number":
             # For the "number" spec, we expect a string like "x {SI notation}" or simply "x".
-            # Use a regex to capture the numeric part and optional SI unit.
             pattern_number = re.compile(r'^\s*(-?\d+(?:\.\d+)?)(.*)$')
             number_list = []
             si_unit = ""
@@ -134,7 +144,6 @@ if selected_series:
                     try:
                         value = float(m.group(1))
                         number_list.append(value)
-                        # Optionally capture SI notation if available.
                         if not si_unit:
                             unit_candidate = m.group(2).strip()
                             if unit_candidate:
@@ -150,7 +159,6 @@ if selected_series:
                 label += ")"
                 apply_filter = st.sidebar.checkbox(f"Filter by {label}")
                 if apply_filter:
-                    # Create a double slider (range slider) returning a tuple (sel_min, sel_max).
                     selected_range = st.sidebar.slider(f"{spec_name} (number)", 
                                                          min_value=global_min,
                                                          max_value=global_max,
@@ -163,8 +171,6 @@ if selected_series:
                 spec_filters[spec_col] = ("logical", logical_choice)
                 
         elif spec_type == "range":
-            # For a "range" spec, expected cell formats:
-            # "x-y {SI notation}" or "-x-y {SI notation}" or simply "x-y"
             range_pattern = re.compile(r'^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)(.*)$')
             range_list = []
             for cell in filtered_df[spec_col].dropna():
@@ -173,7 +179,6 @@ if selected_series:
                     try:
                         low = float(m.group(1))
                         high = float(m.group(2))
-                        # Ensure low is not greater than high.
                         if low > high:
                             low, high = high, low
                         range_list.append((low, high))
@@ -196,7 +201,6 @@ if selected_series:
                 label += ")"
                 apply_range = st.sidebar.checkbox(f"Filter by {label}")
                 if apply_range:
-                    # Create a double slider for the range filter.
                     selected_vals = st.sidebar.slider(f"{spec_name} (range)",
                                                         min_value=global_min,
                                                         max_value=global_max,
@@ -208,12 +212,10 @@ else:
 # ------------------------- Apply Specification Filters -------------------------
 for col, (filter_type, filter_value) in spec_filters.items():
     if filter_type == "lov":
-        # For LOV, include the product if any selected option appears in the cell's value.
         filtered_df = filtered_df[ filtered_df[col].apply(
             lambda cell: bool(set(v.strip() for v in str(cell).split(";") if v.strip()) & set(filter_value)) if pd.notna(cell) else False )
         ]
     elif filter_type == "number":
-        # For "number", use the same regex to extract the numeric value and check if it falls within the range.
         pattern_number = re.compile(r'^\s*(-?\d+(?:\.\d+)?)(.*)$')
         def match_number(cell):
             if pd.isna(cell):
@@ -234,7 +236,6 @@ for col, (filter_type, filter_value) in spec_filters.items():
             return str(cell).strip().lower() == filter_value.lower()
         filtered_df = filtered_df[ filtered_df[col].apply(match_logical) ]
     elif filter_type == "range":
-        # For "range", use the regex to extract the low and high numbers from each cell.
         range_pattern = re.compile(r'^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)(.*)$')
         def match_range(cell):
             if pd.isna(cell):
@@ -244,9 +245,6 @@ for col, (filter_type, filter_value) in spec_filters.items():
                 if m:
                     low = float(m.group(1))
                     high = float(m.group(2))
-                    # Product qualifies if its range overlaps with the slider-selected range.
-                    # That is, if the product's high is at least the selected lower bound and
-                    # its low is at most the selected upper bound.
                     return (high >= filter_value[0]) and (low <= filter_value[1])
                 return False
             except Exception:
@@ -263,25 +261,29 @@ else:
         for series, series_data in cat_data.groupby("Series", sort=False):
             st.markdown(f'<div class="subsection-header"><h3>Series: {series}</h3></div>', unsafe_allow_html=True)
             for idx, row in series_data.iterrows():
-                with st.expander(row["Name"]):
-                    col1, col2 = st.columns([1, 2])
-                    if pd.notna(row["Featured image"]):
-                        try:
-                            col1.image(row["Featured image"], width=100)
-                        except Exception:
-                            col1.markdown("Image not available")
-                    else:
-                        col1.markdown("No image available")
-                    
-                    details = f"""
-**Description:** {row["Description"]}
-
-**Price:** ${row["Sale price in Australia"]}
-
-**SKU:** {row["SKU"]}
-                    """
-                    col2.markdown(details)
-                    
-                    buy_url = f"https://store.omron.com.au/product/{row['SKU']}"
-                    st.markdown(f'<a href="{buy_url}" target="_blank"><button class="buy-button">Buy Now</button></a>',
-                                unsafe_allow_html=True)
+                # Use an HTML <details> element so that the summary (the always‑visible header)
+                # shows the product Name, Description, Price and Buy button.
+                # When expanded, the image and SKU are displayed.
+                buy_url = f"https://store.omron.com.au/product/{row['SKU']}"
+                details_html = f"""
+<details>
+  <summary>
+    <div>
+      <h5>{row['Name']}</h5>
+      <p><strong>Description:</strong> {row['Description']}</p>
+      <p><strong>Price:</strong> ${row['Sale price in Australia']}</p>
+      <a href="{buy_url}" target="_blank">
+         <button class="buy-button">Buy Now</button>
+      </a>
+    </div>
+  </summary>
+  <div style="margin-top: 10px;">
+"""
+                if pd.notna(row["Featured image"]):
+                    details_html += f'<img src="{row["Featured image"]}" width="200" alt="Product Image">'
+                else:
+                    details_html += "<p>No image available</p>"
+                details_html += f'<p><strong>SKU:</strong> {row["SKU"]}</p>'
+                details_html += "</div></details>"
+                
+                st.markdown(details_html, unsafe_allow_html=True)
