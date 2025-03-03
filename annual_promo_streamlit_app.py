@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import re
-
+from streamlit_gsheets import GSheetsConnection
 # ------------------------- Page Setup -------------------------
 st.set_page_config(page_title="Annual Promotion", layout="wide")
 
@@ -72,6 +72,70 @@ st.markdown("""
     }
     </style>
     """, unsafe_allow_html=True)
+
+# ==================== LOGIN SECTION ====================
+# Use session state to protect the app behind our login form.
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.title("Please Provide Your Details to View the Promotion")
+    with st.form("login_form"):
+        first_name = st.text_input("First Name")
+        last_name = st.text_input("Last Name")
+        email = st.text_input("Email Address")
+        company = st.text_input("Company Name")
+        submitted = st.form_submit_button("View promotion")
+        
+        if submitted:
+            # Check that all fields are entered (trim spaces as well).
+            if not (first_name.strip() and last_name.strip() and email.strip() and company.strip()):
+                st.error("All fields are required.")
+            else:
+                try:
+                    # Connect to your Google Sheet using the connection
+                    conn = st.connection("gsheets", type=GSheetsConnection)
+                    
+                    # Read the current data
+                    users_data = conn.read()
+                    
+                    email_exists = False
+                    if users_data is not None:
+                        # If users_data is a pandas DataFrame:
+                        if isinstance(users_data, pd.DataFrame):
+                            if email.strip().lower() in users_data["Email"].str.lower().values:
+                                email_exists = True
+                        else:
+                            # Otherwise assume it is a list of dictionaries.
+                            for row in users_data:
+                                if row.get("Email", "").strip().lower() == email.strip().lower():
+                                    email_exists = True
+                                    break
+                    
+                    # If the email is not already present then append the details.
+                    if not email_exists:
+                        new_entry = pd.DataFrame([{
+                            "First Name": first_name.strip(),
+                            "Last Name": last_name.strip(),
+                            "Email": email.strip(),
+                            "Company": company.strip()
+                        }])
+                        
+                        # Use update instead of append
+                        existing_data = users_data if isinstance(users_data, pd.DataFrame) else pd.DataFrame(users_data)
+                        updated_data = pd.concat([existing_data, new_entry], ignore_index=True)
+                        conn.update(data=updated_data)
+                except Exception as e:
+                    st.error(f"Error connecting to Google Sheets: {str(e)}")
+                    st.stop()
+                
+                # Set session state so that next runs bypass the login.
+                st.session_state.logged_in = True
+                st.rerun()
+    # Stop further execution until the user logs in.
+    st.stop()
+
+# ==================== MAIN APPLICATION ====================
 
 # ------------------------- Promotion Header -------------------------
 st.markdown('<div class="promo-header"><h1>Annual Promotion Sale</h1></div>', unsafe_allow_html=True)
@@ -261,9 +325,7 @@ else:
         for series, series_data in cat_data.groupby("Series", sort=False):
             st.markdown(f'<div class="subsection-header"><h3>Series: {series}</h3></div>', unsafe_allow_html=True)
             for idx, row in series_data.iterrows():
-                # Use an HTML <details> element so that the summary (the always‑visible header)
-                # shows the product Name, Description, Price and Buy button.
-                # When expanded, the image and SKU are displayed.
+                # Build an HTML <details> element for each product.
                 buy_url = f"https://store.omron.com.au/product/{row['SKU']}"
                 details_html = f"""
 <details>
