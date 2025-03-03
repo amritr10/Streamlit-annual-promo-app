@@ -74,11 +74,22 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==================== LOGIN SECTION ====================
+# ==================== LOGIN SECTION ====================
 # Use session state to protect the app behind our login form.
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
+    # Add QR code to sidebar
+    with st.sidebar:
+        st.subheader("Scan QR Code")
+        try:
+            # Display QR code from local file
+            st.image("QR code.png", caption="Scan to access the promotion")
+        except Exception as e:
+            st.error(f"Error loading QR code: {str(e)}")
+    
+    # Main login form in the content area
     st.title("Please Provide Your Details to View the Promotion")
     with st.form("login_form"):
         first_name = st.text_input("First Name")
@@ -134,7 +145,6 @@ if not st.session_state.logged_in:
                 st.rerun()
     # Stop further execution until the user logs in.
     st.stop()
-
 # ==================== MAIN APPLICATION ====================
 
 # ------------------------- Promotion Header -------------------------
