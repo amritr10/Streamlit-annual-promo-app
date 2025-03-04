@@ -10,7 +10,47 @@ st.set_page_config(page_title="Annual Promotion", layout="wide")
 # ------------------------- Custom CSS -------------------------
 st.markdown("""
     <style>
-    /* Promotion Header Style */
+    /* Pulse effect on details hover */
+    @keyframes pulse {
+         0% { transform: scale(1); }
+         50% { transform: scale(1.02); }
+         100% { transform: scale(1); }
+    }
+    details:hover {
+         border-color: #ADD8E6 !important;
+         border-radius: 20px;
+         border-width: 5px;
+         animation: pulse 1s forwards;
+    }
+    /* Product titles inside details are navy blue */
+    [data-testid="stHeadingWithActionElements"],
+    details summary h5 {
+         color: #000080;
+    }
+    /* Pricing in green */
+    .price {
+         color: green;
+         font-weight: bold;
+    }
+    /* Specification filter container: its labels will be navy blue */
+    [data-testid="stMarkdownContainer"],
+    .spec-filter-container label {
+         color: #000080 !important;
+    }
+    /* Each specification filter item gets its own border and padding */
+    .spec-filter-item {
+         border: 1px solid #000000;
+         border-radius: 1px;
+         background-color: #ffffff;
+    }
+    /* Dropdown expanders (product group, category, series) get light blue styling */
+    [data-baseweb="select"],
+    [data-testid="stSidebarContent"] {
+         background-color: #f2f2f2 !important;
+         border-color: #000080 !important;
+         color: #000080 !important;
+    }
+    /* Promotion header styles */
     .promo-header {
         text-align: center;
         padding: 20px;
@@ -23,7 +63,7 @@ st.markdown("""
         font-size: 3em;
         margin: 0;
     }
-    /* Category Section Header */
+    /* Section header (for categories) */
     .section-header {
         padding: 10px;
         background-color: #e9ecef;
@@ -35,7 +75,7 @@ st.markdown("""
         margin: 0;
         color: #343a40;
     }
-    /* Series Subsection Header */
+    /* Series subsection header */
     .subsection-header {
         padding: 5px 10px;
         background-color: #f8f9fa;
@@ -44,10 +84,17 @@ st.markdown("""
         display: flex;
         align-items: center;
     }
-    .subsection-header h3 {
+    .series-info {
+        margin-left: 10px;
+    }
+    .series-info h3 {
         margin: 0;
         color: #495057;
-        margin-left: 10px;
+    }
+    .series-info p {
+        margin: 0;
+        font-size: 0.9em;
+        color: #6c757d;
     }
     /* Buy Button Style */
     .buy-button {
@@ -76,12 +123,12 @@ st.markdown("""
     }
     /* Series image style */
     .series-image {
-        width: 200px;
+        width: 100px;
         height: auto;
         vertical-align: middle;
     }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # ==================== LOGIN SECTION ====================
 if "logged_in" not in st.session_state:
@@ -91,18 +138,16 @@ if not st.session_state.logged_in:
     with st.sidebar:
         st.subheader("Scan QR Code")
         try:
-            st.image("QR code.png", caption="Scan to access the promotion")
+            st.image("QR code.png", caption="Scan to access the promotion on mobile")
         except Exception as e:
             st.error(f"Error loading QR code: {str(e)}")
-    
     st.title("Please Provide Your Details to View the Promotion")
     with st.form("login_form"):
         first_name = st.text_input("First Name")
-        last_name = st.text_input("Last Name")
-        email = st.text_input("Email Address")
-        company = st.text_input("Company Name")
-        submitted = st.form_submit_button("View promotion")
-        
+        last_name  = st.text_input("Last Name")
+        email      = st.text_input("Email Address")
+        company    = st.text_input("Company Name")
+        submitted  = st.form_submit_button("View promotion")
         if submitted:
             if not (first_name.strip() and last_name.strip() and email.strip() and company.strip()):
                 st.error("All fields are required.")
@@ -133,7 +178,6 @@ if not st.session_state.logged_in:
                 except Exception as e:
                     st.error(f"Error connecting to Google Sheets: {str(e)}")
                     st.stop()
-                
                 st.session_state.logged_in = True
                 st.rerun()
     st.stop()
@@ -148,31 +192,45 @@ csv_file = "model-export 20-02-25.csv"
 df = pd.read_csv(csv_file)
 df = df.dropna(subset=["Category", "Series"])
 
-# ------------------------- Load Series Data with Images -------------------------
+# ------------------------- Load Series Data with Images and Descriptions -------------------------
 try:
     series_df = pd.read_csv("series.csv")
     series_images = {}
+    series_descriptions = {}
     for _, row in series_df.iterrows():
-        series_name = row['Series name']
-        image_url = row['Featured image']
-        if pd.notna(series_name) and pd.notna(image_url):
-            series_images[str(series_name).strip()] = str(image_url).strip()
+        series_name = row.get('Series name', None)
+        image_url   = row.get('Featured image', None)
+        description = row.get('Description', None)
+        if pd.notna(series_name):
+            key = str(series_name).strip()
+            if pd.notna(image_url):
+                series_images[key] = str(image_url).strip()
+            if pd.notna(description):
+                series_descriptions[key] = str(description).strip()
 except Exception as e:
-    st.warning(f"Could not load series images: {str(e)}")
+    st.warning(f"Could not load series images or descriptions: {str(e)}")
     series_images = {}
+    series_descriptions = {}
 
-# ------------------------- Product Lifecycle Segmentation -------------------------
+# ------------------------- Product Lifecycle Segmentation & Sorting -------------------------
+# Create a two-column layout: Lifecycle Filter on the left, Sort dropdown on the right.
 if "Product life cycle" in df.columns:
     lifecycle_values = ["All"] + sorted(df["Product life cycle"].dropna().unique().tolist())
 else:
     lifecycle_values = ["All"]
     st.warning("'Product life cycle' column not found in the dataset.")
 
-selected_lifecycle = st.segmented_control(
-    label="Product Life Cycle",
-    options=lifecycle_values,
-    default="All"
-)
+col1, col2 = st.columns([3, 1])
+with col1:
+    selected_lifecycle = st.segmented_control(
+         label="Product Life Cycle",
+         options=lifecycle_values,
+         default="All"
+    )
+with col2:
+    sort_option = st.selectbox("Sort", 
+         options=["Price: Low to High", "Price: High to Low", "Name: A to Z", "Name: Z to A"])
+
 if selected_lifecycle != "All" and "Product life cycle" in df.columns:
     df = df[df["Product life cycle"] == selected_lifecycle].copy()
 
@@ -193,7 +251,7 @@ if selected_category != "All Categories":
     filtered_df = df[df["Category"] == selected_category].copy()
 else:
     filtered_df = df.copy()
-
+    
 # Series Filter based on (possibly) category–filtered data.
 available_series = sorted(filtered_df["Series"].dropna().unique())
 selected_series = st.sidebar.multiselect("Select Series", options=available_series, default=[], 
@@ -202,37 +260,34 @@ if selected_series:
     filtered_df = filtered_df[filtered_df["Series"].isin(selected_series)]
 
 # ------------------------- Specification Filters -------------------------
-# This block both displays the available specification filters based on the narrowed set
-# and shows the number of active spec filters (with a button to clear them)
+# Only show specification filters if a specific category is selected.
 if selected_category != "All Categories":
+    st.sidebar.markdown('<div class="spec-filter-container">', unsafe_allow_html=True)
+    models_displayed_placeholder = st.empty()
+    models_displayed_placeholder.markdown(f"Models Displayed: {len(filtered_df)}")
     st.sidebar.subheader("Specification Filters")
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        applied_filter_count_placeholder = st.empty()  # We'll update the applied filter count below.
-    with col2:
+    col1_filter, col2_filter = st.sidebar.columns(2)
+    with col1_filter:
+        applied_filter_count_placeholder = st.empty()
+    with col2_filter:
         clear_button = st.button("Clear Specification Filters")
         if clear_button:
-            # Remove session_state keys that begin with "spec_filter_" or "spec_filter_checkbox_"
             for key in list(st.session_state.keys()):
                 if key.startswith("spec_filter_") or key.startswith("spec_filter_checkbox_"):
                     del st.session_state[key]
             st.rerun()
-
-    # Use a working copy so widgets recalc their available values based on current filters.
     working_df = filtered_df.copy()
     applied_filter_count = 0
     spec_columns = sorted([col for col in filtered_df.columns if ";" in col])
-    
     for spec_col in spec_columns:
-        # Only display a spec filter if at least one row in working_df has a non-null value.
         if not working_df[spec_col].notna().any():
             continue
-        
+        # Wrap each spec filter in its own container div
+        st.sidebar.markdown('<div class="spec-filter-item">', unsafe_allow_html=True)
         parts = spec_col.split(";", 1)
         spec_name = parts[0].strip()
         spec_type = parts[1].strip().lower()
-        
-        # For list-of-values type filters.
+        # List-of-values filter
         if spec_type == "lov":
             values_set = set()
             for cell in working_df[spec_col].dropna():
@@ -251,10 +306,9 @@ if selected_category != "All Categories":
                 if selected_options:
                     applied_filter_count += 1
                     working_df = working_df[working_df[spec_col].apply(
-                        lambda cell: bool(set(v.strip() for v in str(cell).split(";") if v.strip()) & set(selected_options))
+                        lambda cell: bool({v.strip() for v in str(cell).split(";") if v.strip()} & set(selected_options))
                         if pd.notna(cell) else False)]
-                    
-        # For "number" type filters.
+        # Number filter
         elif spec_type == "number":
             pattern_number = re.compile(r'^\s*(-?\d+(?:\.\d+)?)(.*)$')
             number_list = []
@@ -283,7 +337,6 @@ if selected_category != "All Categories":
                     key=f"spec_filter_checkbox_{spec_col}"
                 )
                 if apply_filter:
-                    # If there is only one unique number, simply display that value.
                     if global_min == global_max:
                         st.sidebar.write(f"{spec_name}: {global_min}")
                         selected_range = (global_min, global_max)
@@ -309,8 +362,7 @@ if selected_category != "All Categories":
                         except Exception:
                             return False
                     working_df = working_df[working_df[spec_col].apply(match_number)]
-        
-        # For "logical" type filters.
+        # Logical filter
         elif spec_type == "logical":
             default_logic = st.session_state.get(f"spec_filter_{spec_col}", "Any")
             logical_choice = st.sidebar.radio(
@@ -323,8 +375,7 @@ if selected_category != "All Categories":
                 applied_filter_count += 1
                 working_df = working_df[working_df[spec_col].apply(
                     lambda cell: str(cell).strip().lower() == logical_choice.lower() if pd.notna(cell) else False)]
-        
-        # For "range" type filters.
+        # Range filter
         elif spec_type == "range":
             range_pattern = re.compile(r'^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)(.*)$')
             range_list = []
@@ -385,12 +436,31 @@ if selected_category != "All Categories":
                         except Exception:
                             return False
                     working_df = working_df[working_df[spec_col].apply(match_range)]
-    
+        # Close the spec filter item container
+        st.sidebar.markdown('</div>', unsafe_allow_html=True)
     applied_filter_count_placeholder.markdown(f"Applied Specification Filters: {applied_filter_count}")
-    st.sidebar.markdown(f"Models Displayed: {len(working_df)}")
-    filtered_df = working_df.copy()  # use the narrowed working_df for display.
+    models_displayed_placeholder.markdown(f"Models Displayed: {len(working_df)}")
+    filtered_df = working_df.copy()
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
 else:
     st.sidebar.info("Select a specific category to filter specifications further.")
+
+# ------------------------- Sorting the Final Products -------------------------
+# Depending on which sort option was chosen, sort the DataFrame.
+if sort_option in ["Price: Low to High", "Price: High to Low"]:
+    if "Sale price in Australia" in filtered_df.columns:
+        # Convert the price column to numeric (if needed)
+        filtered_df["Sale price in Australia"] = pd.to_numeric(filtered_df["Sale price in Australia"], errors="coerce")
+        if sort_option == "Price: Low to High":
+            filtered_df = filtered_df.sort_values(by="Sale price in Australia", ascending=True)
+        else:
+            filtered_df = filtered_df.sort_values(by="Sale price in Australia", ascending=False)
+elif sort_option in ["Name: A to Z", "Name: Z to A"]:
+    if "Name" in filtered_df.columns:
+        if sort_option == "Name: A to Z":
+            filtered_df = filtered_df.sort_values(by="Name", ascending=True)
+        else:
+            filtered_df = filtered_df.sort_values(by="Name", ascending=False)
 
 # ------------------------- Main Content: Group and Display Products -------------------------
 if filtered_df.empty:
@@ -399,16 +469,22 @@ else:
     for category, cat_data in filtered_df.groupby("Category", sort=False):
         st.markdown(f'<div class="section-header"><h2>Category: {category}</h2></div>', unsafe_allow_html=True)
         for series, series_data in cat_data.groupby("Series", sort=False):
+            # Get series image and description if available.
             series_image_html = ""
             if series in series_images:
                 series_image_html = f'<img src="{series_images[series]}" class="series-image" alt="{series}">'
+            desc_html = ""
+            if series in series_descriptions:
+                desc_html = f'<p>{series_descriptions[series]}</p>'
             st.markdown(f'''
                 <div class="subsection-header">
                     {series_image_html}
-                    <h3>Series: {series}</h3>
+                    <div class="series-info">
+                        <h3>Series: {series}</h3>
+                        {desc_html}
+                    </div>
                 </div>
             ''', unsafe_allow_html=True)
-            
             for idx, row in series_data.iterrows():
                 lifecycle_info = ""
                 if "Product life cycle" in row and pd.notna(row["Product life cycle"]):
@@ -420,8 +496,7 @@ else:
     <div>
       <h5>{row['Name']}</h5>
       <p><strong>Description:</strong> {row['Description']}</p>
-      <p><strong>Price:</strong> ${row['Sale price in Australia']}</p>
-      {lifecycle_info}
+      <p><strong>Price:</strong> <span class="price">${row['Sale price in Australia']}</span></p>
       <a href="{buy_url}" target="_blank">
          <button class="buy-button">Buy Now</button>
       </a>
@@ -444,5 +519,5 @@ hide_st_style = """
             footer {visibility: hidden;}
             header {visibility: hidden;}
             </style>
-            """
+"""
 st.markdown(hide_st_style, unsafe_allow_html=True)
