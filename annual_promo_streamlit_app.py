@@ -4,6 +4,30 @@ import pandas as pd
 import re
 from streamlit_gsheets import GSheetsConnection
 
+# ------------------------- Helper Functions -------------------------
+def reset_all_filters():
+    """Reset all filter-related keys and rerun the app."""
+    reset_keys = [
+        "search_query", "search_bar_input",
+        "selected_category", "selected_product_group",
+        "selected_series", "selected_lifecycle"
+    ]
+    for key in list(st.session_state.keys()):
+        if (key in reset_keys or
+            key.startswith("spec_filter_") or
+            key.startswith("spec_filter_checkbox_")):
+            del st.session_state[key]
+    st.rerun()
+
+def search_callback():
+    """When the user presses ENTER in the search input:
+       • Save the input text in 'search_query'
+       • Clear the text input.
+    """
+    if st.session_state.get("search_bar_input", "").strip():
+        st.session_state.search_query = st.session_state.search_bar_input.strip()
+        st.session_state.search_bar_input = ""
+
 # ------------------------- Page Setup -------------------------
 st.set_page_config(page_title="Annual Promotion", layout="wide")
 
@@ -212,33 +236,76 @@ except Exception as e:
     series_images = {}
     series_descriptions = {}
 
-# ------------------------- Product Lifecycle Segmentation & Sorting -------------------------
-# Create a two-column layout: Lifecycle Filter on the left, Sort dropdown on the right.
+# ------------------------- Product Lifecycle Segmentation, Search & Sorting -------------------------
 if "Product life cycle" in df.columns:
     lifecycle_values = ["All"] + sorted(df["Product life cycle"].dropna().unique().tolist())
 else:
     lifecycle_values = ["All"]
     st.warning("'Product life cycle' column not found in the dataset.")
 
-col1, col2 = st.columns([3, 1])
+# ---- Top Row: Lifecycle Filter, Search Bar and Reset Buttons, Sort Dropdown ----
+col1, col2, col3 = st.columns([3, 4, 1])
 with col1:
     selected_lifecycle = st.segmented_control(
          label="Product Life Cycle",
          options=lifecycle_values,
-         default="All"
+         default="All",
+         key="selected_lifecycle"
     )
 with col2:
-    sort_option = st.selectbox("Sort", 
-         options=["Price: Low to High", "Price: High to Low", "Name: A to Z", "Name: Z to A"])
+    # ------ Search Input with on_change callback ------
+    st.text_input(
+         "Search Model Name", 
+         key="search_bar_input",
+         on_change=search_callback,
+         help="Enter a part or the full name of the model and press Enter"
+    )
+    # ------ If a search term has been entered, show a message with a cross to clear it ------
+    if st.session_state.get("search_query", ""):
+         msg_cols = st.columns([0.9, 0.1])
+         with msg_cols[0]:
+              st.markdown(f"**Models searched for:** {st.session_state.search_query}")
+         with msg_cols[1]:
+              if st.button("❌", key="clear_search_btn"):
+                   del st.session_state.search_query
+                   st.rerun()
+with col3:
+    sort_option = st.selectbox(
+         "Sort", 
+         options=["Price: Low to High", "Price: High to Low", "Name: A to Z", "Name: Z to A"]
+    )
 
+# ------------------------- Apply Filters -------------------------
+# Apply lifecycle filter if applicable.
 if selected_lifecycle != "All" and "Product life cycle" in df.columns:
     df = df[df["Product life cycle"] == selected_lifecycle].copy()
 
+# Apply model search filter if a search query exists.
+if st.session_state.get("search_query", "").strip():
+    search_term = st.session_state.search_query.strip()
+    df = df[df["Name"].str.contains(search_term, case=False, na=False)].copy()
+
 # ------------------------- Sidebar Filters -------------------------
+# Add a "Reset All Filters" button above the Product Group selection if any filter is active.
+reset_condition_sidebar = (
+    st.session_state.get("search_query", "") != "" or
+    st.session_state.get("selected_category", "All Categories") != "All Categories" or
+    st.session_state.get("selected_product_group", "All Product Groups") != "All Product Groups" or
+    st.session_state.get("selected_series", []) or
+    st.session_state.get("selected_lifecycle", "All") != "All"
+)
+if reset_condition_sidebar:
+    if st.sidebar.button("Reset All Filters", key="reset_button_sidebar"):
+         reset_all_filters()
+
 # Product Group Filter (displayed on top)
 if "Product Group" in df.columns:
     product_groups = sorted(df["Product Group"].dropna().unique())
-    selected_product_group = st.sidebar.selectbox("Select Product Group", options=["All Product Groups"] + product_groups)
+    selected_product_group = st.sidebar.selectbox(
+         "Select Product Group", 
+         options=["All Product Groups"] + product_groups,
+         key="selected_product_group"
+    )
     if selected_product_group != "All Product Groups":
         df = df[df["Product Group"] == selected_product_group].copy()
 else:
@@ -246,7 +313,11 @@ else:
 
 # Category Filter
 all_categories = sorted(df["Category"].dropna().unique())
-selected_category = st.sidebar.selectbox("Select Category", options=["All Categories"] + all_categories)
+selected_category = st.sidebar.selectbox(
+    "Select Category", 
+    options=["All Categories"] + all_categories, 
+    key="selected_category"
+)
 if selected_category != "All Categories":
     filtered_df = df[df["Category"] == selected_category].copy()
 else:
@@ -254,8 +325,13 @@ else:
     
 # Series Filter based on (possibly) category–filtered data.
 available_series = sorted(filtered_df["Series"].dropna().unique())
-selected_series = st.sidebar.multiselect("Select Series", options=available_series, default=[], 
-                                           help="Select one or more series to filter products")
+selected_series = st.sidebar.multiselect(
+    "Select Series", 
+    options=available_series, 
+    default=[], 
+    key="selected_series",
+    help="Select one or more series to filter products"
+)
 if selected_series:
     filtered_df = filtered_df[filtered_df["Series"].isin(selected_series)]
 
@@ -446,10 +522,8 @@ else:
     st.sidebar.info("Select a specific category to filter specifications further.")
 
 # ------------------------- Sorting the Final Products -------------------------
-# Depending on which sort option was chosen, sort the DataFrame.
 if sort_option in ["Price: Low to High", "Price: High to Low"]:
     if "Sale price in Australia" in filtered_df.columns:
-        # Convert the price column to numeric (if needed)
         filtered_df["Sale price in Australia"] = pd.to_numeric(filtered_df["Sale price in Australia"], errors="coerce")
         if sort_option == "Price: Low to High":
             filtered_df = filtered_df.sort_values(by="Sale price in Australia", ascending=True)
@@ -469,7 +543,6 @@ else:
     for category, cat_data in filtered_df.groupby("Category", sort=False):
         st.markdown(f'<div class="section-header"><h2>Category: {category}</h2></div>', unsafe_allow_html=True)
         for series, series_data in cat_data.groupby("Series", sort=False):
-            # Get series image and description if available.
             series_image_html = ""
             if series in series_images:
                 series_image_html = f'<img src="{series_images[series]}" class="series-image" alt="{series}">'
