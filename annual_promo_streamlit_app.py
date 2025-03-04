@@ -169,7 +169,7 @@ df = df.dropna(subset=["Category", "Series"])
 
 # ------------------------- Load Series Data with Images -------------------------
 try:
-    # Load the series data from Excel file
+    # Load the series data from Excel file (or CSV format if applicable)
     series_df = pd.read_csv("series.csv")
     # Create a dictionary mapping series names to image URLs
     series_images = {}
@@ -182,11 +182,38 @@ except Exception as e:
     st.warning(f"Could not load series images: {str(e)}")
     series_images = {}
 
+# ------------------------- Product Lifecycle Segmentation -------------------------
+# Get available product lifecycle values
+if "Product life cycle" in df.columns:
+    lifecycle_values = ["All"] + sorted(df["Product life cycle"].dropna().unique().tolist())
+else:
+    lifecycle_values = ["All"]
+    st.warning("'Product life cycle' column not found in the dataset.")
+
+# Add segmented control for product lifecycle
+selected_lifecycle = st.segmented_control(
+    label="Product Life Cycle",
+    options=lifecycle_values,
+    default="All"
+)
+
+# Apply product lifecycle filter
+if selected_lifecycle != "All" and "Product life cycle" in df.columns:
+    df = df[df["Product life cycle"] == selected_lifecycle].copy()
+
 # ------------------------- Sidebar Filters -------------------------
+# New: Product Group filter placed on top of the Category filter.
+if "Product Group" in df.columns:
+    product_groups = sorted(df["Product Group"].dropna().unique())
+    selected_product_group = st.sidebar.selectbox("Select Product Group", options=["All Product Groups"] + product_groups)
+    if selected_product_group != "All Product Groups":
+        df = df[df["Product Group"] == selected_product_group].copy()
+else:
+    st.sidebar.info("No 'Product Group' column found in the dataset.")
+
 # Category filter – include an "All Categories" option.
 all_categories = sorted(df["Category"].dropna().unique())
 selected_category = st.sidebar.selectbox("Select Category", options=["All Categories"] + all_categories)
-
 if selected_category != "All Categories":
     filtered_df = df[df["Category"] == selected_category].copy()
 else:
@@ -195,7 +222,7 @@ else:
 # Series filter – based on (possibly) category–filtered data.
 available_series = sorted(filtered_df["Series"].dropna().unique())
 selected_series = st.sidebar.multiselect("Select Series", options=available_series, default=[],
-                                           help="Select one or more series to filter products")
+                                         help="Select one or more series to filter products")
 if selected_series:
     filtered_df = filtered_df[filtered_df["Series"].isin(selected_series)]
 
@@ -259,9 +286,9 @@ if selected_category != "All Categories":
                 apply_filter = st.sidebar.checkbox(f"Filter by {label}")
                 if apply_filter:
                     selected_range = st.sidebar.slider(f"{spec_name} (number)", 
-                                                         min_value=global_min,
-                                                         max_value=global_max,
-                                                         value=(global_min, global_max))
+                                                       min_value=global_min,
+                                                       max_value=global_max,
+                                                       value=(global_min, global_max))
                     spec_filters[spec_col] = ("number", selected_range)
                     
         elif spec_type == "logical":
@@ -301,9 +328,9 @@ if selected_category != "All Categories":
                 apply_range = st.sidebar.checkbox(f"Filter by {label}")
                 if apply_range:
                     selected_vals = st.sidebar.slider(f"{spec_name} (range)",
-                                                        min_value=global_min,
-                                                        max_value=global_max,
-                                                        value=(global_min, global_max))
+                                                      min_value=global_min,
+                                                      max_value=global_max,
+                                                      value=(global_min, global_max))
                     spec_filters[spec_col] = ("range", selected_vals)
 else:
     st.sidebar.info("Select a specific category to filter specifications further.")
@@ -372,6 +399,11 @@ else:
             ''', unsafe_allow_html=True)
             
             for idx, row in series_data.iterrows():
+                # Add product lifecycle status if available
+                lifecycle_info = ""
+                if "Product life cycle" in row and pd.notna(row["Product life cycle"]):
+                    lifecycle_info = f'<p><strong>Lifecycle:</strong> {row["Product life cycle"]}</p>'
+                
                 # Build an HTML <details> element for each product.
                 buy_url = f"https://store.omron.com.au/product/{row['SKU']}"
                 details_html = f"""
@@ -381,6 +413,7 @@ else:
       <h5>{row['Name']}</h5>
       <p><strong>Description:</strong> {row['Description']}</p>
       <p><strong>Price:</strong> ${row['Sale price in Australia']}</p>
+      {lifecycle_info}
       <a href="{buy_url}" target="_blank">
          <button class="buy-button">Buy Now</button>
       </a>
