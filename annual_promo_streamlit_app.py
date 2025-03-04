@@ -562,7 +562,9 @@ else:
                 lifecycle_info = ""
                 if "Product life cycle" in row and pd.notna(row["Product life cycle"]):
                     lifecycle_info = f'<p><strong>Lifecycle:</strong> {row["Product life cycle"]}</p>'
-                buy_url = f"https://store.omron.com.au/product/{row['SKU']}"
+                # Replace any whitespace in SKU with a hyphen before building the buy URL
+                sku_clean = re.sub(r'\s+', '-', row["SKU"].strip())
+                buy_url = f"https://store.omron.com.au/product/{sku_clean}"
                 details_html = f"""
 <details>
   <summary>
