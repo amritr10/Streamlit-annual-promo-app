@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import re
 from streamlit_gsheets import GSheetsConnection
+
 # ------------------------- Page Setup -------------------------
 st.set_page_config(page_title="Annual Promotion", layout="wide")
 
@@ -40,10 +41,13 @@ st.markdown("""
         background-color: #f8f9fa;
         border-left: 4px solid #d6336c;
         margin-bottom: 10px;
+        display: flex;
+        align-items: center;
     }
     .subsection-header h3 {
         margin: 0;
         color: #495057;
+        margin-left: 10px;
     }
     /* Buy Button Style */
     .buy-button {
@@ -69,6 +73,12 @@ st.markdown("""
     details summary {
         outline: none;
         cursor: pointer;
+    }
+    /* Series image style */
+    .series-image {
+        width: 200px;
+        height: auto;
+        vertical-align: middle;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -149,13 +159,28 @@ if not st.session_state.logged_in:
 # ------------------------- Promotion Header -------------------------
 st.markdown('<div class="promo-header"><h1>Annual Promotion</h1></div>', unsafe_allow_html=True)
 
-# ------------------------- Load Data -------------------------
+# ------------------------- Load Product Data -------------------------
 # Adjust the CSV file path as needed.
 csv_file = "model-export 20-02-25.csv"
 df = pd.read_csv(csv_file)
 
 # Drop rows missing Category or Series.
 df = df.dropna(subset=["Category", "Series"])
+
+# ------------------------- Load Series Data with Images -------------------------
+try:
+    # Load the series data from Excel file
+    series_df = pd.read_csv("series.csv")
+    # Create a dictionary mapping series names to image URLs
+    series_images = {}
+    for _, row in series_df.iterrows():
+        series_name = row['Series name']  # Series name in column A
+        image_url = row['Featured image']    # Image URL in column E
+        if pd.notna(series_name) and pd.notna(image_url):
+            series_images[str(series_name).strip()] = str(image_url).strip()
+except Exception as e:
+    st.warning(f"Could not load series images: {str(e)}")
+    series_images = {}
 
 # ------------------------- Sidebar Filters -------------------------
 # Category filter – include an "All Categories" option.
@@ -333,7 +358,19 @@ else:
     for category, cat_data in filtered_df.groupby("Category", sort=False):
         st.markdown(f'<div class="section-header"><h2>Category: {category}</h2></div>', unsafe_allow_html=True)
         for series, series_data in cat_data.groupby("Series", sort=False):
-            st.markdown(f'<div class="subsection-header"><h3>Series: {series}</h3></div>', unsafe_allow_html=True)
+            # Get series image URL if available
+            series_image_html = ""
+            if series in series_images:
+                series_image_html = f'<img src="{series_images[series]}" class="series-image" alt="{series}">'
+            
+            # Create subsection header with image + series name
+            st.markdown(f'''
+                <div class="subsection-header">
+                    {series_image_html}
+                    <h3>Series: {series}</h3>
+                </div>
+            ''', unsafe_allow_html=True)
+            
             for idx, row in series_data.iterrows():
                 # Build an HTML <details> element for each product.
                 buy_url = f"https://store.omron.com.au/product/{row['SKU']}"
