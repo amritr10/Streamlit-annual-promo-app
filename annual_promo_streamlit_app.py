@@ -74,7 +74,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==================== LOGIN SECTION ====================
-# ==================== LOGIN SECTION ====================
 # Use session state to protect the app behind our login form.
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -148,7 +147,7 @@ if not st.session_state.logged_in:
 # ==================== MAIN APPLICATION ====================
 
 # ------------------------- Promotion Header -------------------------
-st.markdown('<div class="promo-header"><h1>Annual Promotion Sale</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="promo-header"><h1>Annual Promotion</h1></div>', unsafe_allow_html=True)
 
 # ------------------------- Load Data -------------------------
 # Adjust the CSV file path as needed.
@@ -178,7 +177,8 @@ if selected_series:
 # ------------------------- Specification Filters -------------------------
 spec_filters = {}
 
-if selected_series:
+# Changed condition: Now show specification filters when a specific category is selected
+if selected_category != "All Categories":
     st.sidebar.subheader("Specification Filters")
     # Assumption: spec columns have a header like "SpecName;SpecType"
     spec_columns = [col for col in filtered_df.columns if ";" in col]
@@ -281,7 +281,7 @@ if selected_series:
                                                         value=(global_min, global_max))
                     spec_filters[spec_col] = ("range", selected_vals)
 else:
-    st.sidebar.info("Select at least one series to filter specifications further.")
+    st.sidebar.info("Select a specific category to filter specifications further.")
 
 # ------------------------- Apply Specification Filters -------------------------
 for col, (filter_type, filter_value) in spec_filters.items():
@@ -359,3 +359,13 @@ else:
                 details_html += "</div></details>"
                 
                 st.markdown(details_html, unsafe_allow_html=True)
+# ------------------------- Main Content: hide streamlit menu  -------------------------
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+
+st.markdown(hide_st_style, unsafe_allow_html=True)
