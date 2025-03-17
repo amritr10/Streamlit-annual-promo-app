@@ -6,7 +6,9 @@ from streamlit_gsheets import GSheetsConnection
 
 # ------------------------- Helper Functions -------------------------
 def reset_all_filters():
-    """Reset all filter-related keys and rerun the app."""
+    """Reset all filter-related keys and rerun the app.
+       Also resets the view mode and selected product group to their default values.
+    """
     reset_keys = [
         "search_query", "search_bar_input",
         "selected_category", "selected_product_group",
@@ -17,6 +19,10 @@ def reset_all_filters():
             key.startswith("spec_filter_") or
             key.startswith("spec_filter_checkbox_")):
             del st.session_state[key]
+
+    # Explicitly reset the Product Group to its default value
+    st.session_state["selected_product_group"] = "All Product Groups"
+    st.session_state["view_mode"] = "Table View"   # Modified to default to Table View
     st.rerun()
 
 def search_callback():
@@ -29,7 +35,7 @@ def search_callback():
         st.session_state.search_bar_input = ""
 
 # ------------------------- Page Setup -------------------------
-st.set_page_config(page_title="Annual Promotion", layout="wide")
+st.set_page_config(page_title="Key Products 2025", layout="wide")
 
 # ------------------------- Custom CSS -------------------------
 st.markdown("""
@@ -209,7 +215,7 @@ if not st.session_state.logged_in:
 # ==================== MAIN APPLICATION ====================
 
 # ------------------------- Promotion Header -------------------------
-st.markdown('<div class="promo-header"><h1>Annual Promotion</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="promo-header"><h1>Key Products 2025</h1></div>', unsafe_allow_html=True)
 
 # ------------------------- Load Product Data -------------------------
 csv_file = "model-export 20-02-25.csv"
@@ -268,6 +274,7 @@ with col2:
          with msg_cols[1]:
               if st.button("❌", key="clear_search_btn"):
                    del st.session_state.search_query
+                   st.session_state["view_mode"] = "Table View"   # Modified to default to Table View
                    st.rerun()
 with col3:
     sort_option = st.selectbox(
@@ -351,6 +358,7 @@ if selected_category != "All Categories":
             for key in list(st.session_state.keys()):
                 if key.startswith("spec_filter_") or key.startswith("spec_filter_checkbox_"):
                     del st.session_state[key]
+            st.session_state["view_mode"] = "Table View"   # Modified to default to Table View
             st.rerun()
     working_df = filtered_df.copy()
     applied_filter_count = 0
@@ -536,13 +544,18 @@ elif sort_option in ["Name: A to Z", "Name: Z to A"]:
         else:
             filtered_df = filtered_df.sort_values(by="Name", ascending=False)
 
+# ------------------------- View Mode Switcher -------------------------
+view_mode = st.radio("Display Options", options=["Expander View", "Table View"], index=1, key="view_mode")  # Modified default to Table View
+
 # ------------------------- Main Content: Group and Display Products -------------------------
 if filtered_df.empty:
     st.info("No products found with the current filters.")
 else:
+    # Group products by Category and then by Series.
     for category, cat_data in filtered_df.groupby("Category", sort=False):
         st.markdown(f'<div class="section-header"><h2>Category: {category}</h2></div>', unsafe_allow_html=True)
         for series, series_data in cat_data.groupby("Series", sort=False):
+            # Render series header with optional image and description.
             series_image_html = ""
             if series in series_images:
                 series_image_html = f'<img src="{series_images[series]}" class="series-image" alt="{series}">'
@@ -558,14 +571,14 @@ else:
                     </div>
                 </div>
             ''', unsafe_allow_html=True)
-            for idx, row in series_data.iterrows():
-                lifecycle_info = ""
-                if "Product life cycle" in row and pd.notna(row["Product life cycle"]):
-                    lifecycle_info = f'<p><strong>Lifecycle:</strong> {row["Product life cycle"]}</p>'
-                # Replace any whitespace in SKU with a hyphen before building the buy URL
-                sku_clean = re.sub(r'\s+', '-', row["SKU"].strip())
-                buy_url = f"https://store.omron.com.au/product/{sku_clean}"
-                details_html = f"""
+
+            # Depending on view_mode show the products as expanders or as a table.
+            if view_mode == "Expander View":
+                # Loop through each product and create an expander (using HTML details tag).
+                for idx, row in series_data.iterrows():
+                    sku_clean = re.sub(r'\s+', '-', row["SKU"].strip())
+                    buy_url = f"https://store.omron.com.au/product/{sku_clean}"
+                    details_html = f"""
 <details>
   <summary>
     <div>
@@ -579,14 +592,33 @@ else:
   </summary>
   <div style="margin-top: 10px;">
 """
-                if pd.notna(row["Featured image"]):
-                    details_html += f'<img src="{row["Featured image"]}" width="200" alt="Product Image">'
-                else:
-                    details_html += "<p>No image available</p>"
-                details_html += f'<p><strong>SKU:</strong> {row["SKU"]}</p>'
-                details_html += "</div></details>"
-                st.markdown(details_html, unsafe_allow_html=True)
-
+                    if pd.notna(row["Featured image"]):
+                        details_html += f'<img src="{row["Featured image"]}" width="200" alt="Product Image">'
+                    else:
+                        details_html += "<p>No image available</p>"
+                    details_html += f'<p><strong>SKU:</strong> {row["SKU"]}</p>'
+                    details_html += "</div></details>"
+                    st.markdown(details_html, unsafe_allow_html=True)
+            else:  # "Table View"
+                # Prepare a table with selected columns.
+                table_df = series_data.copy()
+                # Create Buy URL column using string concatenation.
+                table_df["Buy URL"] = table_df["SKU"].apply(
+                    lambda sku: "https://store.omron.com.au/product/" + re.sub(r"\s+", "-", sku.strip())
+                )
+                # Format the Sale price column with $ and round to 2 decimal places.
+                def format_price(x):
+                    try:
+                        return f"${float(x):.2f}"
+                    except Exception:
+                        return x
+                if "Sale price in Australia" in table_df.columns:
+                    table_df["Sale price in Australia"] = table_df["Sale price in Australia"].apply(format_price)
+                # Show the columns: "Name", "Description", "Sale price in Australia", "Buy URL"
+                cols_to_show = ["Name", "Description", "Sale price in Australia", "Buy URL"]
+                cols_to_show = [col for col in cols_to_show if col in table_df.columns]
+                st.table(table_df[cols_to_show].reset_index(drop=True))
+                
 # ------------------------- Hide Streamlit Menu -------------------------
 hide_st_style = """
             <style>
