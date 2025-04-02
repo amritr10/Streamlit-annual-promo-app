@@ -6,7 +6,9 @@ from streamlit_gsheets import GSheetsConnection
 
 # ------------------------- Helper Functions -------------------------
 def reset_all_filters():
-    """Reset all filter-related keys and rerun the app."""
+    """Reset all filter-related keys and rerun the app.
+       Also resets the view mode and selected product group to their default values.
+    """
     reset_keys = [
         "search_query", "search_bar_input",
         "selected_category", "selected_product_group",
@@ -17,6 +19,10 @@ def reset_all_filters():
             key.startswith("spec_filter_") or
             key.startswith("spec_filter_checkbox_")):
             del st.session_state[key]
+
+    # Explicitly reset the Product Group to its default value
+    st.session_state["selected_product_group"] = "All Product Groups"
+    st.session_state["view_mode"] = "Table View"
     st.rerun()
 
 def search_callback():
@@ -28,8 +34,23 @@ def search_callback():
         st.session_state.search_query = st.session_state.search_bar_input.strip()
         st.session_state.search_bar_input = ""
 
+# ------------------------- YouTube Thumbnail Utility -------------------------
+def get_youtube_thumbnail(url):
+    """Extracts the video id from a YouTube URL and returns the URL for its thumbnail image."""
+    video_id = None
+    watch_match = re.search(r"v=([^&]+)", url)
+    if watch_match:
+        video_id = watch_match.group(1)
+    else:
+        short_match = re.search(r"youtu\.be/([^?&]+)", url)
+        if short_match:
+            video_id = short_match.group(1)
+    if video_id:
+        return f"https://img.youtube.com/vi/{video_id}/0.jpg"
+    return None
+
 # ------------------------- Page Setup -------------------------
-st.set_page_config(page_title="Annual Promotion", layout="wide")
+st.set_page_config(page_title="Key Products 2025", layout="wide")
 
 # ------------------------- Custom CSS -------------------------
 st.markdown("""
@@ -209,7 +230,7 @@ if not st.session_state.logged_in:
 # ==================== MAIN APPLICATION ====================
 
 # ------------------------- Promotion Header -------------------------
-st.markdown('<div class="promo-header"><h1>Annual Promotion</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="promo-header"><h1>Key Products 2025</h1></div>', unsafe_allow_html=True)
 
 # ------------------------- Load Product Data -------------------------
 csv_file = "model-export 20-02-25.csv"
@@ -253,14 +274,12 @@ with col1:
          key="selected_lifecycle"
     )
 with col2:
-    # ------ Search Input with on_change callback ------
     st.text_input(
          "Search Model Name", 
          key="search_bar_input",
          on_change=search_callback,
          help="Enter a part or the full name of the model and press Enter"
     )
-    # ------ If a search term has been entered, show a message with a cross to clear it ------
     if st.session_state.get("search_query", ""):
          msg_cols = st.columns([0.9, 0.1])
          with msg_cols[0]:
@@ -268,6 +287,7 @@ with col2:
          with msg_cols[1]:
               if st.button("❌", key="clear_search_btn"):
                    del st.session_state.search_query
+                   st.session_state["view_mode"] = "Table View"
                    st.rerun()
 with col3:
     sort_option = st.selectbox(
@@ -276,17 +296,14 @@ with col3:
     )
 
 # ------------------------- Apply Filters -------------------------
-# Apply lifecycle filter if applicable.
 if selected_lifecycle != "All" and "Product life cycle" in df.columns:
     df = df[df["Product life cycle"] == selected_lifecycle].copy()
 
-# Apply model search filter if a search query exists.
 if st.session_state.get("search_query", "").strip():
     search_term = st.session_state.search_query.strip()
     df = df[df["Name"].str.contains(search_term, case=False, na=False)].copy()
 
 # ------------------------- Sidebar Filters -------------------------
-# Add a "Reset All Filters" button above the Product Group selection if any filter is active.
 reset_condition_sidebar = (
     st.session_state.get("search_query", "") != "" or
     st.session_state.get("selected_category", "All Categories") != "All Categories" or
@@ -298,7 +315,6 @@ if reset_condition_sidebar:
     if st.sidebar.button("Reset All Filters", key="reset_button_sidebar"):
          reset_all_filters()
 
-# Product Group Filter (displayed on top)
 if "Product Group" in df.columns:
     product_groups = sorted(df["Product Group"].dropna().unique())
     selected_product_group = st.sidebar.selectbox(
@@ -311,7 +327,6 @@ if "Product Group" in df.columns:
 else:
     st.sidebar.info("No 'Product Group' column found in the dataset.")
 
-# Category Filter
 all_categories = sorted(df["Category"].dropna().unique())
 selected_category = st.sidebar.selectbox(
     "Select Category", 
@@ -323,7 +338,6 @@ if selected_category != "All Categories":
 else:
     filtered_df = df.copy()
     
-# Series Filter based on (possibly) category–filtered data.
 available_series = sorted(filtered_df["Series"].dropna().unique())
 selected_series = st.sidebar.multiselect(
     "Select Series", 
@@ -336,7 +350,6 @@ if selected_series:
     filtered_df = filtered_df[filtered_df["Series"].isin(selected_series)]
 
 # ------------------------- Specification Filters -------------------------
-# Only show specification filters if a specific category is selected.
 if selected_category != "All Categories":
     st.sidebar.markdown('<div class="spec-filter-container">', unsafe_allow_html=True)
     models_displayed_placeholder = st.empty()
@@ -351,6 +364,7 @@ if selected_category != "All Categories":
             for key in list(st.session_state.keys()):
                 if key.startswith("spec_filter_") or key.startswith("spec_filter_checkbox_"):
                     del st.session_state[key]
+            st.session_state["view_mode"] = "Table View"
             st.rerun()
     working_df = filtered_df.copy()
     applied_filter_count = 0
@@ -358,12 +372,10 @@ if selected_category != "All Categories":
     for spec_col in spec_columns:
         if not working_df[spec_col].notna().any():
             continue
-        # Wrap each spec filter in its own container div
         st.sidebar.markdown('<div class="spec-filter-item">', unsafe_allow_html=True)
         parts = spec_col.split(";", 1)
         spec_name = parts[0].strip()
         spec_type = parts[1].strip().lower()
-        # List-of-values filter
         if spec_type == "lov":
             values_set = set()
             for cell in working_df[spec_col].dropna():
@@ -384,7 +396,6 @@ if selected_category != "All Categories":
                     working_df = working_df[working_df[spec_col].apply(
                         lambda cell: bool({v.strip() for v in str(cell).split(";") if v.strip()} & set(selected_options))
                         if pd.notna(cell) else False)]
-        # Number filter
         elif spec_type == "number":
             pattern_number = re.compile(r'^\s*(-?\d+(?:\.\d+)?)(.*)$')
             number_list = []
@@ -438,7 +449,6 @@ if selected_category != "All Categories":
                         except Exception:
                             return False
                     working_df = working_df[working_df[spec_col].apply(match_number)]
-        # Logical filter
         elif spec_type == "logical":
             default_logic = st.session_state.get(f"spec_filter_{spec_col}", "Any")
             logical_choice = st.sidebar.radio(
@@ -451,7 +461,6 @@ if selected_category != "All Categories":
                 applied_filter_count += 1
                 working_df = working_df[working_df[spec_col].apply(
                     lambda cell: str(cell).strip().lower() == logical_choice.lower() if pd.notna(cell) else False)]
-        # Range filter
         elif spec_type == "range":
             range_pattern = re.compile(r'^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)(.*)$')
             range_list = []
@@ -512,7 +521,6 @@ if selected_category != "All Categories":
                         except Exception:
                             return False
                     working_df = working_df[working_df[spec_col].apply(match_range)]
-        # Close the spec filter item container
         st.sidebar.markdown('</div>', unsafe_allow_html=True)
     applied_filter_count_placeholder.markdown(f"Applied Specification Filters: {applied_filter_count}")
     models_displayed_placeholder.markdown(f"Models Displayed: {len(working_df)}")
@@ -536,36 +544,137 @@ elif sort_option in ["Name: A to Z", "Name: Z to A"]:
         else:
             filtered_df = filtered_df.sort_values(by="Name", ascending=False)
 
-# ------------------------- Main Content: Group and Display Products -------------------------
+# ------------------------- View Mode Switcher -------------------------
+# If the "New Product" life cycle is selected, include a third option.
+if selected_lifecycle == "New Product":
+    display_options = ["Expander View", "Table View", "Product Experience View"]
+else:
+    display_options = ["Expander View", "Table View"]
+
+default_view = "Table View" if "Table View" in display_options else display_options[0]
+view_mode = st.radio("Display Options", options=display_options, index=display_options.index(default_view), key="view_mode")
+
+# ------------------------- Main Content: New Product Experience View or Original -------------------------
 if filtered_df.empty:
     st.info("No products found with the current filters.")
 else:
-    for category, cat_data in filtered_df.groupby("Category", sort=False):
-        st.markdown(f'<div class="section-header"><h2>Category: {category}</h2></div>', unsafe_allow_html=True)
-        for series, series_data in cat_data.groupby("Series", sort=False):
-            series_image_html = ""
-            if series in series_images:
-                series_image_html = f'<img src="{series_images[series]}" class="series-image" alt="{series}">'
-            desc_html = ""
-            if series in series_descriptions:
-                desc_html = f'<p>{series_descriptions[series]}</p>'
-            st.markdown(f'''
-                <div class="subsection-header">
-                    {series_image_html}
-                    <div class="series-info">
-                        <h3>Series: {series}</h3>
-                        {desc_html}
+    # If the New Product life cycle is selected and the Product Experience View is active,
+    # then show a special new product experience display.
+    if selected_lifecycle == "New Product" and view_mode == "Product Experience View":
+        # Use st.pills to choose the series for the experience view instead of st.radio.
+        new_series_list = sorted(filtered_df["Series"].dropna().unique())
+        if new_series_list:
+            selected_series_exp = st.pills("Select Series for New Product Experience", options=new_series_list, key="exp_new_series")
+            # Look up metadata from series.csv for the selected Series.
+            series_info_df = series_df[series_df["Series name"].str.strip() == selected_series_exp]
+            if series_info_df.empty:
+                st.error("Series information not found in series.csv for the selected series.")
+            else:
+                series_info = series_info_df.iloc[0]
+                # ----- Section 1: Series Header & Image -----
+                st.markdown("---")
+                col1_sec1, col2_sec1 = st.columns([3, 1])
+                with col1_sec1:
+                    st.title(series_info.get("Series name", ""))
+                    st.header(series_info.get("Short description", ""))
+                    st.write(series_info.get("Description", ""))
+                with col2_sec1:
+                    if pd.notna(series_info.get("Featured image", "")):
+                        st.image(series_info["Featured image"], width=400)
+                    else:
+                        st.write("No image available")
+                # ----- Section 2: Products Table -----
+                st.markdown("---")
+                st.header("Products")
+                exp_products_df = filtered_df[filtered_df["Series"]==selected_series_exp].copy()
+                if not exp_products_df.empty:
+                    exp_products_df["Buy URL"] = exp_products_df["SKU"].apply(
+                         lambda sku: "https://store.omron.com.au/product/" + re.sub(r"\s+", "-", sku.strip())
+                    )
+                    def format_price(x):
+                        try:
+                            return f"${float(x):.2f}"
+                        except Exception:
+                            return x
+                    if "Sale price in Australia" in exp_products_df.columns:
+                        exp_products_df["Sale price in Australia"] = exp_products_df["Sale price in Australia"].apply(format_price)
+                    cols_to_show = ["Name", "Description", "Sale price in Australia", "Promo Catalogue Print?", "Buy URL"]
+                    cols_to_show = [col for col in cols_to_show if col in exp_products_df.columns]
+                    st.table(exp_products_df[cols_to_show].reset_index(drop=True))
+                else:
+                    st.info("No products found for the selected series.")
+                # ----- Section 3: Features -----
+                st.markdown("---")
+                st.header("Features")
+                col1_sec3, col2_sec3 = st.columns([3, 1])
+                with col1_sec3:
+                    st.title(series_info.get("Feature set header 1", ""))
+                    st.write(series_info.get("Feature set description 1", ""))
+                with col2_sec3:
+                    if pd.notna(series_info.get("Feature set image 1", "")):
+                        st.image(series_info["Feature set image 1"], width=500)
+                    else:
+                        st.write("No feature image available")
+                # ----- Section 4: Videos -----
+                st.markdown("---")
+                st.header("Videos")
+                video_url = series_info.get("Video 1", "")
+                if video_url and video_url.strip() != "":
+                    thumbnail_url = get_youtube_thumbnail(video_url)
+                    if thumbnail_url:
+                        st.image(thumbnail_url, width=400)
+                        st.markdown(f"[Watch Video]({video_url})")
+                    else:
+                        st.write("Invalid video URL")
+                else:
+                    st.info("No video available")
+                # ----- Section 5: Downloads -----
+                st.markdown("---")
+                st.header("Downloads")
+                # Use st.pills to choose the download type
+                download_option = st.pills("Select download type", 
+                                           options=["Datasheet link", "<Manual.|Node|.AWS Deep Link - Original>"],
+                                           key="downloads_selector")
+                if not exp_products_df.empty:
+                    download_links = []
+                    for idx, row in exp_products_df.iterrows():
+                        link = row.get(download_option, "")
+                        if pd.notna(link) and link.strip() != "":
+                            download_links.append((row.get("Name", "Product"), link.strip()))
+                    if download_links:
+                        for name, link in download_links:
+                            st.markdown(f"- [{name}]({link})")
+                    else:
+                        st.info("No download links available")
+                else:
+                    st.info("No products to download.")
+        else:
+            st.info("No series available for New Product experience.")
+    else:
+        # ---- Original Display: Group products by Category and then Series (Expander or Table View) ----
+        for category, cat_data in filtered_df.groupby("Category", sort=False):
+            st.markdown(f'<div class="section-header"><h2>Category: {category}</h2></div>', unsafe_allow_html=True)
+            for series, series_data in cat_data.groupby("Series", sort=False):
+                series_image_html = ""
+                if series in series_images:
+                    series_image_html = f'<img src="{series_images[series]}" class="series-image" alt="{series}">'
+                desc_html = ""
+                if series in series_descriptions:
+                    desc_html = f'<p>{series_descriptions[series]}</p>'
+                st.markdown(f'''
+                    <div class="subsection-header">
+                        {series_image_html}
+                        <div class="series-info">
+                            <h3>Series: {series}</h3>
+                            {desc_html}
+                        </div>
                     </div>
-                </div>
-            ''', unsafe_allow_html=True)
-            for idx, row in series_data.iterrows():
-                lifecycle_info = ""
-                if "Product life cycle" in row and pd.notna(row["Product life cycle"]):
-                    lifecycle_info = f'<p><strong>Lifecycle:</strong> {row["Product life cycle"]}</p>'
-                # Replace any whitespace in SKU with a hyphen before building the buy URL
-                sku_clean = re.sub(r'\s+', '-', row["SKU"].strip())
-                buy_url = f"https://store.omron.com.au/product/{sku_clean}"
-                details_html = f"""
+                ''', unsafe_allow_html=True)
+                if view_mode == "Expander View":
+                    for idx, row in series_data.iterrows():
+                        sku_clean = re.sub(r'\s+', '-', row["SKU"].strip())
+                        buy_url = f"https://store.omron.com.au/product/{sku_clean}"
+                        details_html = f"""
 <details>
   <summary>
     <div>
@@ -579,13 +688,28 @@ else:
   </summary>
   <div style="margin-top: 10px;">
 """
-                if pd.notna(row["Featured image"]):
-                    details_html += f'<img src="{row["Featured image"]}" width="200" alt="Product Image">'
-                else:
-                    details_html += "<p>No image available</p>"
-                details_html += f'<p><strong>SKU:</strong> {row["SKU"]}</p>'
-                details_html += "</div></details>"
-                st.markdown(details_html, unsafe_allow_html=True)
+                        if pd.notna(row["Featured image"]):
+                            details_html += f'<img src="{row["Featured image"]}" width="200" alt="Product Image">'
+                        else:
+                            details_html += "<p>No image available</p>"
+                        details_html += f'<p><strong>SKU:</strong> {row["SKU"]}</p>'
+                        details_html += "</div></details>"
+                        st.markdown(details_html, unsafe_allow_html=True)
+                else:  # Table View
+                    table_df = series_data.copy()
+                    table_df["Buy URL"] = table_df["SKU"].apply(
+                        lambda sku: "https://store.omron.com.au/product/" + re.sub(r"\s+", "-", sku.strip())
+                    )
+                    def format_price(x):
+                        try:
+                            return f"${float(x):.2f}"
+                        except Exception:
+                            return x
+                    if "Sale price in Australia" in table_df.columns:
+                        table_df["Sale price in Australia"] = table_df["Sale price in Australia"].apply(format_price)
+                    cols_to_show = ["Name", "Description", "Sale price in Australia", "Promo Catalogue Print?", "Buy URL"]
+                    cols_to_show = [col for col in cols_to_show if col in table_df.columns]
+                    st.table(table_df[cols_to_show].reset_index(drop=True))
 
 # ------------------------- Hide Streamlit Menu -------------------------
 hide_st_style = """
