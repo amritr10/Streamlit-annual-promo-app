@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import re
+import streamlit.components.v1 as components
 from streamlit_gsheets import GSheetsConnection
 
 # ------------------------- Helper Functions -------------------------
@@ -192,10 +193,14 @@ if not st.session_state.logged_in:
         last_name  = st.text_input("Last Name")
         email      = st.text_input("Email Address")
         company    = st.text_input("Company Name")
+        # ---- New: Password Field ----
+        password   = st.text_input("Password", type="password", help="Enter the promotion password")
         submitted  = st.form_submit_button("View promotion")
         if submitted:
-            if not (first_name.strip() and last_name.strip() and email.strip() and company.strip()):
+            if not (first_name.strip() and last_name.strip() and email.strip() and company.strip() and password.strip()):
                 st.error("All fields are required.")
+            elif password.strip() != "au$promo2025":
+                st.error("Incorrect password. Please try again.")
             else:
                 try:
                     conn = st.connection("gsheets", type=GSheetsConnection)
@@ -231,9 +236,9 @@ if not st.session_state.logged_in:
 
 # ------------------------- Promotion Header -------------------------
 st.markdown('<div class="promo-header"><h1>Key Products 2025</h1></div>', unsafe_allow_html=True)
-
+st.markdown('<div class="proof of concept, internal use"><h2>proof of concept, interal use only</h2></div>', unsafe_allow_html=True)
 # ------------------------- Load Product Data -------------------------
-csv_file = "model-export 20-02-25.csv"
+csv_file = "key_products_12_05_25.csv"
 df = pd.read_csv(csv_file)
 df = df.dropna(subset=["Category", "Series"])
 
@@ -544,15 +549,27 @@ elif sort_option in ["Name: A to Z", "Name: Z to A"]:
         else:
             filtered_df = filtered_df.sort_values(by="Name", ascending=False)
 
-# ------------------------- View Mode Switcher -------------------------
-# If the "New Product" life cycle is selected, include a third option.
+# ------------------------- View Mode and Promo Catalogue Filter Switcher -------------------------
 if selected_lifecycle == "New Product":
     display_options = ["Expander View", "Table View", "Product Experience View"]
+    default_view = "Product Experience View"
 else:
     display_options = ["Expander View", "Table View"]
+    default_view = "Table View"
 
-default_view = "Table View" if "Table View" in display_options else display_options[0]
-view_mode = st.radio("Display Options", options=display_options, index=display_options.index(default_view), key="view_mode")
+# Place the Display Options on the left and the Promo Catalogue filter on the right.
+view_col, promo_col = st.columns([3,1])
+with view_col:
+    view_mode = st.radio("Display Options", options=display_options, index=display_options.index(default_view), key="view_mode")
+with promo_col:
+    promo_filter = st.checkbox("Promo Catalogue Print?", key="promo_catalogue_filter", help="Show only products having ‘Promo Catalogue Print?’ as ✅")
+
+# If the promo filter is active then limit the products further.
+if promo_filter:
+    if "Promo Catalogue Print?" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["Promo Catalogue Print?"].astype(str).str.strip() == "✅"]
+    else:
+        st.warning("The column 'Promo Catalogue Print?' was not found in the dataset.")
 
 # ------------------------- Main Content: New Product Experience View or Original -------------------------
 if filtered_df.empty:
@@ -568,7 +585,7 @@ else:
             # Look up metadata from series.csv for the selected Series.
             series_info_df = series_df[series_df["Series name"].str.strip() == selected_series_exp]
             if series_info_df.empty:
-                st.error("Series information not found in series.csv for the selected series.")
+                st.error("Select a product series above to explore its details, features, and specifications. Tap to enter the full product experience!")
             else:
                 series_info = series_info_df.iloc[0]
                 # ----- Section 1: Series Header & Image -----
@@ -580,7 +597,7 @@ else:
                     st.write(series_info.get("Description", ""))
                 with col2_sec1:
                     if pd.notna(series_info.get("Featured image", "")):
-                        st.image(series_info["Featured image"], width=200)
+                        st.image(series_info["Featured image"], width=400)
                     else:
                         st.write("No image available")
                 # ----- Section 2: Products Table -----
@@ -606,29 +623,93 @@ else:
                 # ----- Section 3: Features -----
                 st.markdown("---")
                 st.header("Features")
-                col1_sec3, col2_sec3 = st.columns([3, 1])
-                with col1_sec3:
-                    st.title(series_info.get("Feature set header 1", ""))
-                    st.write(series_info.get("Feature set description 1", ""))
-                with col2_sec3:
-                    if pd.notna(series_info.get("Feature set image 1", "")):
-                        st.image(series_info["Feature set image 1"], width=200)
-                    else:
-                        st.write("No feature image available")
+                # Dynamically render feature sets with alternating layout
+                feature_indices = []
+                for col in series_info.index:
+                    m = re.match(r"Feature set header (\d+)$", col)
+                    if m:
+                        feature_indices.append(int(m.group(1)))
+                feature_indices.sort()
+                for i, idx in enumerate(feature_indices):
+                    header = series_info.get(f"Feature set header {idx}", "")
+                    desc   = series_info.get(f"Feature set description {idx}", "")
+                    img    = series_info.get(f"Feature set image {idx}", "")
+                    header = header if pd.notna(header) else ""
+                    desc   = desc if pd.notna(desc) else ""
+                    img    = img if pd.notna(img) else ""
+                    if header or desc or img:
+                        if i % 2 == 0:
+                            text_col, img_col = st.columns([3, 1])
+                        else:
+                            img_col, text_col = st.columns([1, 3])
+                        with text_col:
+                            st.subheader(header)
+                            st.write(desc)
+                        with img_col:
+                            if img:
+                                st.image(img, width=400)
+                            else:
+                                st.write("No feature image available")
+                        st.markdown("---")
                 # ----- Section 4: Videos -----
                 st.markdown("---")
                 st.header("Videos")
-                video_url = series_info.get("Video 1", "")
-                if video_url and video_url.strip() != "":
-                    thumbnail_url = get_youtube_thumbnail(video_url)
-                    if thumbnail_url:
-                        st.image(thumbnail_url, width=300)
-                        st.markdown(f"[Watch Video]({video_url})")
-                    else:
-                        st.write("Invalid video URL")
+                video_indices = []
+                for col in series_info.index:
+                    m = re.match(r"Video (\d+)$", col)
+                    if m:
+                        video_indices.append(int(m.group(1)))
+                video_indices.sort()
+                # filter out videos with no URL or name
+                valid_video_indices = []
+                for idx in video_indices:
+                    url_field = f"Video {idx}"
+                    name_field = f"Video {idx} name"
+                    video_url = series_info.get(url_field, "")
+                    video_name = series_info.get(name_field, "")
+                    if (pd.notna(video_url) and str(video_url).strip()) or (pd.notna(video_name) and str(video_name).strip()):
+                        valid_video_indices.append(idx)
+                if valid_video_indices:
+                    for i in range(0, len(valid_video_indices), 2):
+                        chunk = valid_video_indices[i:i+2]
+                        cols = st.columns(len(chunk))
+                        for col_idx, idx in enumerate(chunk):
+                            with cols[col_idx]:
+                                name_field = f"Video {idx} name"
+                                url_field = f"Video {idx}"
+                                video_name = series_info.get(name_field, "")
+                                video_url = series_info.get(url_field, "")
+                                video_name = video_name if pd.notna(video_name) else ""
+                                video_url = video_url if pd.notna(video_url) else ""
+                                video_url = str(video_url).strip()
+                                if video_name:
+                                    st.subheader(video_name)
+                                thumbnail_url = get_youtube_thumbnail(video_url) if video_url else None
+                                if thumbnail_url:
+                                    st.image(thumbnail_url, width=200)
+                                else:
+                                    st.write("No thumbnail available")
+                                with st.expander("Watch Video"):
+                                    if video_url:
+                                        st.video(video_url)
+                                    else:
+                                        st.info("No URL provided")
+                    st.markdown("---")
                 else:
-                    st.info("No video available")
-                # ----- Section 5: Downloads -----
+                    st.info("No videos available")
+                # ----- Section 5: Internal Document -----
+                st.markdown("---")
+                st.header("Internal Document")
+                doc_link = series_info.get("Internal document 1", "")
+                doc_desc = series_info.get("Internal document 1 description", "")
+                if doc_link and doc_link.strip():
+                    if doc_desc and doc_desc.strip():
+                        st.write(doc_desc)
+                    if st.button("Show Document", key="internal_doc_btn"):
+                        st.markdown(f'<a href="{doc_link}" target="_blank"><button class="buy-button">Show Internal Document</button></a>', unsafe_allow_html=True)
+                else:
+                    st.info("No internal document available")
+                # ----- Section 6: Downloads -----
                 st.markdown("---")
                 st.header("Downloads")
                 # Use st.pills to choose the download type
