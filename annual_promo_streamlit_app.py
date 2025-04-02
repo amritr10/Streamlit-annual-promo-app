@@ -545,13 +545,14 @@ elif sort_option in ["Name: A to Z", "Name: Z to A"]:
             filtered_df = filtered_df.sort_values(by="Name", ascending=False)
 
 # ------------------------- View Mode Switcher -------------------------
-# If the "New Product" life cycle is selected, include a third option.
 if selected_lifecycle == "New Product":
     display_options = ["Expander View", "Table View", "Product Experience View"]
+    # Set the default to "Product Experience View" when "New Product" is selected.
+    default_view = "Product Experience View"
 else:
     display_options = ["Expander View", "Table View"]
+    default_view = "Table View"
 
-default_view = "Table View" if "Table View" in display_options else display_options[0]
 view_mode = st.radio("Display Options", options=display_options, index=display_options.index(default_view), key="view_mode")
 
 # ------------------------- Main Content: New Product Experience View or Original -------------------------
@@ -580,7 +581,7 @@ else:
                     st.write(series_info.get("Description", ""))
                 with col2_sec1:
                     if pd.notna(series_info.get("Featured image", "")):
-                        st.image(series_info["Featured image"], width=200)
+                        st.image(series_info["Featured image"], width=400)
                     else:
                         st.write("No image available")
                 # ----- Section 2: Products Table -----
@@ -612,7 +613,7 @@ else:
                     st.write(series_info.get("Feature set description 1", ""))
                 with col2_sec3:
                     if pd.notna(series_info.get("Feature set image 1", "")):
-                        st.image(series_info["Feature set image 1"], width=200)
+                        st.image(series_info["Feature set image 1"], width=400)
                     else:
                         st.write("No feature image available")
                 # ----- Section 4: Videos -----
@@ -622,7 +623,7 @@ else:
                 if video_url and video_url.strip() != "":
                     thumbnail_url = get_youtube_thumbnail(video_url)
                     if thumbnail_url:
-                        st.image(thumbnail_url, width=300)
+                        st.image(thumbnail_url, width=400)
                         st.markdown(f"[Watch Video]({video_url})")
                     else:
                         st.write("Invalid video URL")
