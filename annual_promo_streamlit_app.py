@@ -580,7 +580,7 @@ else:
                     st.write(series_info.get("Description", ""))
                 with col2_sec1:
                     if pd.notna(series_info.get("Featured image", "")):
-                        st.image(series_info["Featured image"], width=400)
+                        st.image(series_info["Featured image"], width=200)
                     else:
                         st.write("No image available")
                 # ----- Section 2: Products Table -----
@@ -612,7 +612,7 @@ else:
                     st.write(series_info.get("Feature set description 1", ""))
                 with col2_sec3:
                     if pd.notna(series_info.get("Feature set image 1", "")):
-                        st.image(series_info["Feature set image 1"], width=500)
+                        st.image(series_info["Feature set image 1"], width=200)
                     else:
                         st.write("No feature image available")
                 # ----- Section 4: Videos -----
@@ -622,7 +622,7 @@ else:
                 if video_url and video_url.strip() != "":
                     thumbnail_url = get_youtube_thumbnail(video_url)
                     if thumbnail_url:
-                        st.image(thumbnail_url, width=400)
+                        st.image(thumbnail_url, width=300)
                         st.markdown(f"[Watch Video]({video_url})")
                     else:
                         st.write("Invalid video URL")
