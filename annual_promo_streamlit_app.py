@@ -192,10 +192,14 @@ if not st.session_state.logged_in:
         last_name  = st.text_input("Last Name")
         email      = st.text_input("Email Address")
         company    = st.text_input("Company Name")
+        # ---- New: Password Field ----
+        password   = st.text_input("Password", type="password", help="Enter the promotion password")
         submitted  = st.form_submit_button("View promotion")
         if submitted:
-            if not (first_name.strip() and last_name.strip() and email.strip() and company.strip()):
+            if not (first_name.strip() and last_name.strip() and email.strip() and company.strip() and password.strip()):
                 st.error("All fields are required.")
+            elif password.strip() != "au$promo2025":
+                st.error("Incorrect password. Please try again.")
             else:
                 try:
                     conn = st.connection("gsheets", type=GSheetsConnection)
@@ -231,7 +235,7 @@ if not st.session_state.logged_in:
 
 # ------------------------- Promotion Header -------------------------
 st.markdown('<div class="promo-header"><h1>Key Products 2025</h1></div>', unsafe_allow_html=True)
-
+st.markdown('<div class="proof of concept, internal use"><h2>proof of concept, interal use only</h2></div>', unsafe_allow_html=True)
 # ------------------------- Load Product Data -------------------------
 csv_file = "model-export 20-02-25.csv"
 df = pd.read_csv(csv_file)
@@ -544,16 +548,27 @@ elif sort_option in ["Name: A to Z", "Name: Z to A"]:
         else:
             filtered_df = filtered_df.sort_values(by="Name", ascending=False)
 
-# ------------------------- View Mode Switcher -------------------------
+# ------------------------- View Mode and Promo Catalogue Filter Switcher -------------------------
 if selected_lifecycle == "New Product":
     display_options = ["Expander View", "Table View", "Product Experience View"]
-    # Set the default to "Product Experience View" when "New Product" is selected.
     default_view = "Product Experience View"
 else:
     display_options = ["Expander View", "Table View"]
     default_view = "Table View"
 
-view_mode = st.radio("Display Options", options=display_options, index=display_options.index(default_view), key="view_mode")
+# Place the Display Options on the left and the Promo Catalogue filter on the right.
+view_col, promo_col = st.columns([3,1])
+with view_col:
+    view_mode = st.radio("Display Options", options=display_options, index=display_options.index(default_view), key="view_mode")
+with promo_col:
+    promo_filter = st.checkbox("Promo Catalogue Print?", key="promo_catalogue_filter", help="Show only products having ‘Promo Catalogue Print?’ as ✅")
+
+# If the promo filter is active then limit the products further.
+if promo_filter:
+    if "Promo Catalogue Print?" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["Promo Catalogue Print?"].astype(str).str.strip() == "✅"]
+    else:
+        st.warning("The column 'Promo Catalogue Print?' was not found in the dataset.")
 
 # ------------------------- Main Content: New Product Experience View or Original -------------------------
 if filtered_df.empty:
@@ -569,7 +584,7 @@ else:
             # Look up metadata from series.csv for the selected Series.
             series_info_df = series_df[series_df["Series name"].str.strip() == selected_series_exp]
             if series_info_df.empty:
-                st.error("Series information not found in series.csv for the selected series.")
+                st.error("Select a product series above to explore its details, features, and specifications. Tap to enter the full product experience!")
             else:
                 series_info = series_info_df.iloc[0]
                 # ----- Section 1: Series Header & Image -----
