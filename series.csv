@@ -2502,11 +2502,11 @@ Ewellix Cobot Lifting Columns,Collaborative Robots,Ewellix lifting column access
 F440-F,Smart Vision Inspection Systems,,5-Megapixel C-Mount Smart Camera,https://public-bucket-stored-files.s3.ap-southeast-2.amazonaws.com/077efa9b3cb885cb471e824cebe408cd248dd58deafffa5d1d24eac16c78f11b.jpg,,,,,,,,,,,,,,,,,,,,,,
 D40A-2,,Non-contact door switch,"Tailored for a wide range of applications
 
-• Small size actuator – An actuator that is smaller than the switch saves space, even inside the door.
-• Reduce costs by connecting up to 30 switches to a single controller, if risk evaluation allows you.
-• Easy-to-see 2-color indicators - Switch status is easy to see at a glance with the red/yellow LED indicators.
-• Can be mounted on either side – This provides the easiest wiring path to enable mounting to all types of doors
-• Save labour with connector and reduce inventory",https://www.ia.omron.com/Images/l_3920-13-317856-198x198.jpg,D40A-2 Highlights,"* Enhanced Safety and Reliability
+✅ Small size actuator – An actuator that is smaller than the switch saves space, even inside the door.
+✅ Reduce costs by connecting up to 30 switches to a single controller, if risk evaluation allows you.
+✅ Easy-to-see 2-color indicators - Switch status is easy to see at a glance with the red/yellow LED indicators.
+✅ Can be mounted on either side – This provides the easiest wiring path to enable mounting to all types of doors
+✅ Save labour with connector and reduce inventory",https://www.ia.omron.com/Images/l_3920-13-317856-198x198.jpg,D40A-2 Highlights,"* Enhanced Safety and Reliability
 * Compliance with Hygiene Standards
 * Cost-Effective Global Solution
 * Simplified Troubleshooting",https://assets.omron.com/m/14a5171062c3ddcd/Landscape_L-D40A-2-Product-Family-Page-Images-2024083.png,Key Features,"* IP66/67 Rated Enclosure
@@ -2612,21 +2612,38 @@ Any Code. Any Application. Any Operator. Any Production Line.
 With the VHV5, you are equipped to conquer any challenge with confidence. Elevate your operations to a new level of performance and dependability today.",https://8z1xg04k.tinifycdn.com/images/No2_HighSpeedLine_Bottlle_prod.jpg?resize.method=scale&resize.width=1920,,,,,,,,,,,,Internal presentations,https://omrongroup-my.sharepoint.com/:f:/r/personal/amrit_ramadugu_omron_com/Documents/OMRON/MARKETING/3.0%20SS%20PMM/VISION%20PM/VHV5?csf=1&web=1&e=fmmKaj
 M1,Frequency inverters,The Integrated AC Drivers Solution,"System integration on EtherCAT® leads you to the stage where machine design is more flexible and higher efficiency, saving space, and integrated configuration by software tool
 
-• IM and PM motor control in OLV & CLV (200% torque at 0Hz).
-• Torque control for IM in OLV/CLV, PM in CLV.
-• Speed, Position and Gear function.
-• Flexible EtherCAT configuration: Standard and Ring topology.
-• Built-in 1 encoder / pulse counter input.
-• Safe Stop 0 (STO SIL3 PLe) wired and FSoE.
-• Easy Plug-In Development allowing Custom Functionality inside of the inverter.
-• Energy saving dedicated functionality.
-• M1 STD built-in Modbus and M1 ECT built-in EtherCAT
-• PC configuration tool: Sysmac Studio IDE
-• Coated PCB for dust and moisture resistance. 
-• 10 years 24/7 Maintenance Free operation.
-• CE,UKCA, cULus, KC, RCM and RoHS.",https://8z1xg04k.tinifycdn.com/images/m1_ect_std_product_image_400x400_prod.jpg?resize.method=fit&resize.width=400&resize.height=400,Optimization of machine design,Built-in EtherCAT allows you to integrate the M1 Series into any EtherCAT network.It saves total engineering cost.,https://8z1xg04k.tinifycdn.com/images/m1_webpage_images_3840xx_a_en_sol.jpg?resize.method=scale&resize.width=1920,Flexible connection,"The EtherCAT topology allows variable machine design, and the ring topology contributes to robust manufacturing",https://8z1xg04k.tinifycdn.com/images/m1_webpage_images_3840xx_m_en_sol.jpg?resize.method=scale&resize.width=1920,Easy Plug-In Development,"The M1 inverter features easy Plug-In Development, enabling built-in custom functionality that provides advanced ""thinking"" - functioning like a brain inside the inverter to power intelligent processes.",https://8z1xg04k.tinifycdn.com/images/images_for_m1_web_pages_c_en_misc_1.jpg?resize.method=scale&resize.width=1920,Safe and reliable manufacturing,"Safe and reliable manufacturing
+✅ IM and PM motor control in OLV & CLV (200% torque at 0Hz).
+✅ Torque control for IM in OLV/CLV, PM in CLV.
+✅ Speed, Position and Gear function.
+✅ Flexible EtherCAT configuration: Standard and Ring topology.
+✅ Built-in 1 encoder / pulse counter input.
+✅ Safe Stop 0 (STO SIL3 PLe) wired and FSoE.
+✅ Easy Plug-In Development allowing Custom Functionality inside of the inverter.
+✅ Energy saving dedicated functionality.
+✅ M1 STD built-in Modbus and M1 ECT built-in EtherCAT
+✅ PC configuration tool: Sysmac Studio IDE
+✅ Coated PCB for dust and moisture resistance. 
+✅ 10 years 24/7 Maintenance Free operation.
+✅ CE,UKCA, cULus, KC, RCM and RoHS.",https://8z1xg04k.tinifycdn.com/images/m1_ect_std_product_image_400x400_prod.jpg?resize.method=fit&resize.width=400&resize.height=400,Optimization of machine design,Built-in EtherCAT allows you to integrate the M1 Series into any EtherCAT network.It saves total engineering cost.,https://8z1xg04k.tinifycdn.com/images/m1_webpage_images_3840xx_a_en_sol.jpg?resize.method=scale&resize.width=1920,Flexible connection,"The EtherCAT topology allows variable machine design, and the ring topology contributes to robust manufacturing",https://8z1xg04k.tinifycdn.com/images/m1_webpage_images_3840xx_m_en_sol.jpg?resize.method=scale&resize.width=1920,Easy Plug-In Development,"The M1 inverter features easy Plug-In Development, enabling built-in custom functionality that provides advanced ""thinking"" - functioning like a brain inside the inverter to power intelligent processes.",https://8z1xg04k.tinifycdn.com/images/images_for_m1_web_pages_c_en_misc_1.jpg?resize.method=scale&resize.width=1920,Safe and reliable manufacturing,"Safe and reliable manufacturing
 Safe working environment
 Safety always comes first. Omron's scalable safety solutions allow you to design machine safety according to customer needs. The M1 Series expands the flexibility of your safety solution
 
 Reliable production
 Modern production lines should be safe and reliable at the same time. Omron's integrated safety solution realizes a safe working environment for workers and high operational availability of each machine.",https://8z1xg04k.tinifycdn.com/images/m1_webpage_images_3840xx_e_en_sol.jpg?resize.method=scale&resize.width=1920,OEE intro video,https://omrongroup.sharepoint.com/sites/C_GLB_J00089/_layouts/15/stream.aspx?id=%2Fsites%2FC%5FGLB%5FJ00089%2FTrainings%2FWebinar%5FVHV5%2DF%5FIntroduction%5FOEE%5F20250227%2FVHV5%2DF%20Introduction%2Emp4&referrer=StreamWebApp%2EWeb&referrerScenario=AddressBarCopied%2Eview%2Ec8b992fd%2D8d68%2D4642%2Db7eb%2D89c303a02982,,,,,,,Introduction,https://omrongroup-my.sharepoint.com/:f:/r/personal/amrit_ramadugu_omron_com/Documents/OMRON/MARKETING/3.0%20SS%20PMM/VSD/M1?csf=1&web=1&e=41wxCJ
+FH Cameras AI Licences,,OMRON FH AI Tools ​,"Image processing AI can perform classification, detection, segmentation, and anomaly detection.​
+
+The “Defect Learning Inspection” processing item is a function that uses classification and segmentation.​",https://vokke-development-bucket-public.s3.ap-southeast-2.amazonaws.com/AZ1mydlcPjXJkTvjl2wPvORFNmUjy3kgBm4AcZUM.png,,"*AI-driven automation: Unlock potential with the OMRON FH Vision controller.​
+
+*OpenVINO toolkit: Enhances deep learning inference with minimal latency.​
+
+*Real-time processing: Sophisticated AI models deployed directly on the FH Vision controller.​
+
+*Performance optimization: Faster, accurate decision-making and improved operational efficiency.​
+
+*Quality control: Ensures superior outcomes in automation processes.​
+
+*Omron innovation: Merges cutting-edge AI with Intel’s advanced computing.",https://vokke-development-bucket-public.s3.ap-southeast-2.amazonaws.com/bLPohstppblOyEAFxXbJEJkRpNrgCFe9IGU3xX89.png,,,,,,,,,,,,,,,,,,Internal Documents and Overview,https://omrongroup-my.sharepoint.com/:f:/r/personal/amrit_ramadugu_omron_com/Documents/OMRON/MARKETING/3.0%20SS%20PMM/VISION%20PM/FH%20AI/Sharing?csf=1&web=1&e=qJhe10
+SWIR Camera,,SWIR Series: Inspect the Impossible,"Hyper Spectral SWIR Sensors allowing 
+for inspection through certain 
+materials",https://sentech.co.jp/en/products/SWIR/images/swir.jpg,,"By using this under a light source with a specific wavelength of 1200nm or higher, features that were difficult to detect with visible light cameras can be identified.(It varies depending on the material of the target object, as well as the wavelength and intensity of the light source used.)
+To use the model with CoaXPress interface, a CoaXPress image capture board and CoaXPress cable are required. To use the model with Camera Link interface, a Camera Link image capture board and Camera Link cables are required.",,,,,,,,,,,Inspect the Impossible with OMRON’s SWIR - Short Wave Infrared Camera Series,https://www.youtube.com/watch?v=xHhJSp6Mkzo,See beyond light,https://www.youtube.com/watch?v=H1iM7a0KzEQ,,,,,Internal Documents and Overview,https://omrongroup-my.sharepoint.com/:f:/r/personal/amrit_ramadugu_omron_com/Documents/OMRON/MARKETING/3.0%20SS%20PMM/VISION%20PM/SWIR/Sharing?csf=1&web=1&e=R5vFeT
