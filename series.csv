@@ -31,9 +31,17 @@ H3BA-N,Additional Timers,,,,,,,,,,,,,,,,,,,,,,,,,
 VB series,Limit switches,,,,,,,,,,,,,,,,,,,,,,,,,
 G5V,Additional Relays,,,,,,,,,,,,,,,,,,,,,,,,,
 F03-05 and PH,Level control,,,,,,,,,,,,,,,,,,,,,,,,,
-D41D,Non-contact switches,High-coded non-contact door switch,"Reducing the risk of interlock devices being deactivated, for a safe and worry-free production site.",https://public-bucket-stored-files.s3.ap-southeast-2.amazonaws.com/975cd94c0c987a278b0771bb4f6eaf1dbb47a085f7d8a40737986a8c19e837e6.jpg,,,,,,,,,,,,,,,,,,,,,,
+D41D,Non-contact switches,High-coded non-contact door switch,"Reducing the risk of interlock devices being deactivated, for a safe and worry-free production site.",https://public-bucket-stored-files.s3.ap-southeast-2.amazonaws.com/975cd94c0c987a278b0771bb4f6eaf1dbb47a085f7d8a40737986a8c19e837e6.jpg,Preventing from defeating your protection guards,"Amongst the typical methods of deactivating interlock devices includes using a spare actuator and releasing the lock having omitted the correct work procedure. These methods can lead to accidents at a production site. Therefore, we recommend using the correct procedure indicated in the EN ISO 14119 standard to prevent deactivation.",https://8z1xg04k.tinifycdn.com/images/d41d_machine_running_2950x3196_sol.jpg,Simplify your design,"Select the right actuator from three different options, to fit your machine requirements and save space by installing a door switch in narrow spaces or corners inside machinery.",https://assets.omron.com/m/fe6923625883e12/D41-DOverview.jpg,,,,,,,,,,,,,,,Amrits internal documents repo,https://omrongroup-my.sharepoint.com/:f:/r/personal/amrit_ramadugu_omron_com/Documents/OMRON/MARKETING/3.0%20SS%20PMM/SAFETY%20PM/D41/D41D%20sharing?csf=1&web=1&e=9FgRSF
 SR1,Safety relay units,Expandable safety monitoring relay with fixed terminals,"Basic, stand alone safety applications require safety relays that are flexible, easy to troubleshoot and simple to install.  The SR1 faimly of safety monitoring relays address all of those needs.  With dedicated safety functions and expansion capabilities, the SR 1 supports the flexibility you need.  Easy to access diagnostic indicators make troubleshooting quick and stress-free while the fixed terminals make installation of the SR1 simple.  The SR1 makes all of machine safety projects easier and provides the protection you need.
-",https://public-bucket-stored-files.s3.ap-southeast-2.amazonaws.com/1f10550904f80c021e1db4d478bc28d924fa661d098a6d49cbb6765a1999001d.jpg,,,,,,,,,,,,,,,,,,,,,,
+
+Possible accident risk
+
+Economic loss due to production shutdown
+Liability for compensation for income lost during shutdown
+Production plan disrupted by shortage of alternative personnel
+More serious risk of business continuity 
+
+If an industrial accident occurs, the governmentalauthorities may order the company to suspend the work, or suspend or change the use of the machinery.",https://public-bucket-stored-files.s3.ap-southeast-2.amazonaws.com/1f10550904f80c021e1db4d478bc28d924fa661d098a6d49cbb6765a1999001d.jpg,,,,,,,,,,,,,,,,,,,,,,
 i4L Accessories,,,,,,,,,,,,,,,,,,,,,,,,,,
 Relay Accessories,Industrial plug-in relays,,Accessories for Plug-in Industrial Relays,https://public-bucket-stored-files.s3.ap-southeast-2.amazonaws.com/dd9f921c0e76b0fbea0359018cf6432157f26ad6f51ab05f2eb0ad3323849902.jpg,,,,,,,,,,,,,,,,,,,,,,
 Safety Interlock Switches,,,,,,,,,,,,,,,,,,,,,,,,,,

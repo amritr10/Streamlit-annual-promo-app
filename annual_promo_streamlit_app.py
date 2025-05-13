@@ -236,7 +236,7 @@ if not st.session_state.logged_in:
 
 # ------------------------- Promotion Header -------------------------
 st.markdown('<div class="promo-header"><h1>Key Products 2025</h1></div>', unsafe_allow_html=True)
-st.markdown('<div class="proof of concept, internal use"><h2>proof of concept, interal use only</h2></div>', unsafe_allow_html=True)
+st.markdown('<div class="proof of concept, internal use"><h2>This website is a proof of concept, interal use only</h2></div>', unsafe_allow_html=True)
 # ------------------------- Load Product Data -------------------------
 csv_file = "key_products_12_05_25.csv"
 df = pd.read_csv(csv_file)
