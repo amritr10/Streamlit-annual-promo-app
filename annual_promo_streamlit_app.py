@@ -4,6 +4,9 @@ import pandas as pd
 import re
 import streamlit.components.v1 as components
 from streamlit_gsheets import GSheetsConnection
+import os
+import glob
+import json
 
 # ------------------------- Helper Functions -------------------------
 def reset_all_filters():
@@ -49,6 +52,58 @@ def get_youtube_thumbnail(url):
     if video_id:
         return f"https://img.youtube.com/vi/{video_id}/0.jpg"
     return None
+
+# ------------------------- Bundle Network Helpers -------------------------
+def filter_and_sum(df, search_terms, exclusion_terms=None,
+                   column_name='Description', sum_columns=[]):
+    """Filter by wildcard search_terms (+ exclusions), sum specified columns."""
+    def pattern(t):
+        return '^' + re.escape(t.strip()).replace(r'\*','.*') + '$'
+    pats = [pattern(t) for t in search_terms if t.strip()]
+    if not pats:
+        return df.iloc[0:0].copy(), {c:0.0 for c in sum_columns}
+    rx = re.compile("|".join(pats), flags=re.IGNORECASE)
+    mask = df[column_name].astype(str).str.match(rx)
+    if exclusion_terms:
+        ex_pats = [pattern(t) for t in exclusion_terms if t.strip()]
+        if ex_pats:
+            ex_rx = re.compile("|".join(ex_pats), flags=re.IGNORECASE)
+            mask &= ~df[column_name].astype(str).str.match(ex_rx)
+    sub = df[mask].copy()
+    sums = {c: float(sub[c].sum()) if c in sub else 0.0 for c in sum_columns}
+    return sub, sums
+
+def flatten_mappings(mappings_data, mapping_to_parent, dependent_sums=None):
+    """Turn mappings_data into a flat DataFrame for graph construction."""
+    rows = []
+    for mg, df_m in mappings_data.items():
+        pg = mapping_to_parent.get(mg,"")
+        for _, r in df_m.iterrows():
+            dg = r['Dependent Group']
+            rows.append({
+                "Parent Group": pg,
+                "Dependent Group": dg,
+                "Type": r['Type'],
+                "Multiple": float(r['Multiple'])
+            })
+    return pd.DataFrame(rows)
+
+def build_network_dot(flat_df):
+    """Produce a Graphviz dot string from the flat mapping DataFrame."""
+    dot = ["digraph G {", "  rankdir=LR;"]
+    for pg in flat_df['Parent Group'].unique():
+        dot.append(f'  "{pg}" [shape=box, style=filled, fillcolor=lightblue];')
+    for dg in flat_df['Dependent Group'].unique():
+        dot.append(f'  "{dg}" [shape=ellipse, style=filled, fillcolor=lightgreen];')
+    for _, r in flat_df.iterrows():
+        style = "solid" if r['Type']=="Objective" else "dashed"
+        color = "blue"   if r['Type']=="Objective" else "gray"
+        dot.append(
+          f'  "{r["Parent Group"]}" -> "{r["Dependent Group"]}" '
+          f'[label="{r["Type"]} ({r["Multiple"]})", style="{style}", color="{color}"];'
+        )
+    dot.append("}")
+    return "\n".join(dot)
 
 # ------------------------- Page Setup -------------------------
 st.set_page_config(page_title="Key Products 2025", layout="wide")
@@ -236,7 +291,8 @@ if not st.session_state.logged_in:
 
 # ------------------------- Promotion Header -------------------------
 st.markdown('<div class="promo-header"><h1>Key Products 2025</h1></div>', unsafe_allow_html=True)
-st.markdown('<div class="proof of concept, internal use"><h2>This website is a proof of concept, interal use only</h2></div>', unsafe_allow_html=True)
+st.markdown('<div class="proof of concept, internal use"><h2>This website is a proof of concept, internal use only</h2></div>', unsafe_allow_html=True)
+
 # ------------------------- Load Product Data -------------------------
 csv_file = "key_products_12_05_25.csv"
 df = pd.read_csv(csv_file)
@@ -578,11 +634,9 @@ else:
     # If the New Product life cycle is selected and the Product Experience View is active,
     # then show a special new product experience display.
     if selected_lifecycle == "New Product" and view_mode == "Product Experience View":
-        # Use st.pills to choose the series for the experience view instead of st.radio.
         new_series_list = sorted(filtered_df["Series"].dropna().unique())
         if new_series_list:
             selected_series_exp = st.pills("Select Series for New Product Experience", options=new_series_list, key="exp_new_series")
-            # Look up metadata from series.csv for the selected Series.
             series_info_df = series_df[series_df["Series name"].str.strip() == selected_series_exp]
             if series_info_df.empty:
                 st.error("Select a product series above to explore its details, features, and specifications. Tap to enter the full product experience!")
@@ -600,6 +654,7 @@ else:
                         st.image(series_info["Featured image"], width=400)
                     else:
                         st.write("No image available")
+
                 # ----- Section 2: Products Table -----
                 st.markdown("---")
                 st.header("Products")
@@ -620,10 +675,10 @@ else:
                     st.table(exp_products_df[cols_to_show].reset_index(drop=True))
                 else:
                     st.info("No products found for the selected series.")
+
                 # ----- Section 3: Features -----
                 st.markdown("---")
                 st.header("Features")
-                # Dynamically render feature sets with alternating layout
                 feature_indices = []
                 for col in series_info.index:
                     m = re.match(r"Feature set header (\d+)$", col)
@@ -651,6 +706,165 @@ else:
                             else:
                                 st.write("No feature image available")
                         st.markdown("---")
+
+                # ----- Section 3.5: Bundle Network -----
+                st.markdown("---")
+                st.subheader("Bundle Network")
+
+                # find the JSON config for this series
+                config_dir = "bundles config files"
+                pattern    = os.path.join(config_dir, f"*{selected_series_exp}*.json")
+                cfg_files  = glob.glob(pattern)
+                if not cfg_files:
+                    st.info(f"No bundle configuration found for series '{selected_series_exp}'.")
+                    bundle_cfg = None
+                else:
+                    try:
+                        with open(cfg_files[0], "r") as f:
+                            bundle_cfg = json.load(f)
+                    except Exception as e:
+                        st.error(f"Failed to parse {cfg_files[0]}: {e}")
+                        bundle_cfg = None
+
+                if bundle_cfg:
+                    # ---- build mapping structures ----
+                    pg_cfg = bundle_cfg["parent_groups"][0]
+                    parent_name = pg_cfg["name"]
+                    sel_block = bundle_cfg["mapping_selections"][parent_name]
+                    mapping_name = sel_block["mapping_group_name"]
+                    entries = []
+                    for dep in sel_block["selected_dependents"]:
+                        entries.append({
+                            "Dependent Group": dep["name"],
+                            "Type": ("Objective" if dep.get("Objective Mapping", False)
+                                    else "Subjective"),
+                            "Multiple": dep.get("multiple",1.0)
+                        })
+                    mappings_data     = {mapping_name: pd.DataFrame(entries)}
+                    mapping_to_parent = {mapping_name: parent_name}
+
+                    # ---- filter the products for this series into a small DF ----
+                    bundle_df = filtered_df[filtered_df["Series"] == selected_series_exp].copy()
+                    # bring price into a numeric column
+                    bundle_df["_price"] = pd.to_numeric(bundle_df["Sale price in Australia"], errors="coerce")
+
+                    # ---- parent group options ----
+                    parent_df, _ = filter_and_sum(
+                        bundle_df,
+                        pg_cfg["search_terms"],
+                        pg_cfg.get("exclusion_terms", []),
+                        column_name="Name",    # <<< match on Name
+                        sum_columns=[]
+                    )
+                    # build the option labels: "Name – Description"
+                    parent_opts = [
+                        f"{row.Name} – {row.Description}"
+                        for _,row in parent_df.iterrows()
+                    ]
+                    # insert a placeholder
+                    parent_opts = ["— select —"] + parent_opts
+
+                    sel_parent_label = st.selectbox(
+                        f"Select product for {parent_name}",
+                        options=parent_opts,
+                        index=0,
+                        key="bundle_sel_parent"
+                    )
+                    # extract the actual Name back (or None if placeholder)
+                    if sel_parent_label == "— select —":
+                        sel_parent = None
+                    else:
+                        sel_parent = sel_parent_label.split(" – ")[0]
+
+                    # ---- dependent groups ----
+                    dependent_dfs = {}
+                    sel_dependent = {}
+                    rename_map    = {}           # will hold group_name → selected product name
+
+                    for dg_cfg in bundle_cfg["dependent_groups"]:
+                        dg = dg_cfg["name"]
+                        df_d, _ = filter_and_sum(
+                            bundle_df,
+                            dg_cfg["search_terms"],
+                            dg_cfg.get("exclusion_terms", []),
+                            column_name="Name",
+                            sum_columns=[]
+                        )
+                        dependent_dfs[dg] = df_d
+
+                        opts = [f"{r.Name} – {r.Description}" for _,r in df_d.iterrows()]
+                        opts = ["— select —"] + opts
+
+                        lbl = st.selectbox(
+                            f"Select product for {dg}",
+                            options=opts,
+                            index=0,
+                            key=f"bundle_sel_{dg}"
+                        )
+                        if lbl == "— select —":
+                            sel = None
+                        else:
+                            sel = lbl.split(" – ")[0]
+                        sel_dependent[dg] = sel
+
+                    # build rename_map (for graph labels)
+                    if sel_parent:
+                        rename_map[parent_name] = sel_parent
+                    for dg, prod in sel_dependent.items():
+                        if prod:
+                            rename_map[dg] = prod
+
+                    # ---- draw the graph ----
+                    flat_df = flatten_mappings(mappings_data, mapping_to_parent)
+                    dot_lines = ["digraph G {", "  rankdir=LR;"]
+                    # nodes
+                    for pg in flat_df["Parent Group"].unique():
+                        label = rename_map.get(pg, pg)
+                        dot_lines.append(
+                            f'  "{pg}" [label="{label}", shape=box, style=filled, fillcolor=lightblue];'
+                        )
+                    for dg in flat_df["Dependent Group"].unique():
+                        label = rename_map.get(dg, dg)
+                        dot_lines.append(
+                            f'  "{dg}" [label="{label}", shape=ellipse, style=filled, fillcolor=lightgreen];'
+                        )
+                    # edges
+                    for _,r in flat_df.iterrows():
+                        style = "solid" if r["Type"]=="Objective" else "dashed"
+                        color = "blue"   if r["Type"]=="Objective" else "gray"
+                        dot_lines.append(
+                            f'  "{r["Parent Group"]}" -> "{r["Dependent Group"]}" '
+                            f'[label="{r["Type"]} ({r["Multiple"]})", style="{style}", color="{color}"];'
+                        )
+                    dot_lines.append("}")
+                    st.graphviz_chart("\n".join(dot_lines), use_container_width=True)
+
+                    # ---- total price ----
+                    total_price = 0.0
+                    if sel_parent:
+                        row = parent_df[parent_df["Name"]==sel_parent]
+                        total_price += float(row["_price"].iloc[0] or 0)
+                    for dg, sel in sel_dependent.items():
+                        if sel:
+                            df_d = dependent_dfs[dg]
+                            row = df_d[df_d["Name"]==sel]
+                            total_price += float(row["_price"].iloc[0] or 0)
+                    st.markdown(f"**Total Bundle Price:** ${total_price:.2f}")
+
+                    # ---- bill of materials ----
+                    bom = []
+                    if sel_parent:
+                        bom.append((parent_name, sel_parent))
+                    for dg,sel in sel_dependent.items():
+                        if sel:
+                            bom.append((dg, sel))
+
+                    if bom:
+                        st.markdown("**Bill of Materials**")
+                        for group, prod_name in bom:
+                            st.write(f"- {group}: {prod_name}")
+                # else: bundle_cfg was None → already handled above
+
                 # ----- Section 4: Videos -----
                 st.markdown("---")
                 st.header("Videos")
@@ -660,7 +874,6 @@ else:
                     if m:
                         video_indices.append(int(m.group(1)))
                 video_indices.sort()
-                # filter out videos with no URL or name
                 valid_video_indices = []
                 for idx in video_indices:
                     url_field = f"Video {idx}"
@@ -697,6 +910,7 @@ else:
                     st.markdown("---")
                 else:
                     st.info("No videos available")
+
                 # ----- Section 5: Internal Document -----
                 st.markdown("---")
                 st.header("Internal Document")
@@ -709,10 +923,10 @@ else:
                         st.markdown(f'<a href="{doc_link}" target="_blank"><button class="buy-button">Show Internal Document</button></a>', unsafe_allow_html=True)
                 else:
                     st.info("No internal document available")
+
                 # ----- Section 6: Downloads -----
                 st.markdown("---")
                 st.header("Downloads")
-                # Use st.pills to choose the download type
                 download_option = st.pills("Select download type", 
                                            options=["Datasheet link", "<Manual.|Node|.AWS Deep Link - Original>"],
                                            key="downloads_selector")

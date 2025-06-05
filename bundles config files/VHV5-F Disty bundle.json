@@ -1,0 +1,74 @@
+{
+    "num_parent_groups": 1,
+    "num_dependent_groups": 4,
+    "parent_groups": [
+        {
+            "name": "Main code reader units",
+            "search_terms": [
+                "VHV5-F000L050M-SRX",
+                "VHV5-F000L050M-HRX"
+            ],
+            "exclusion_terms": [
+                "VHV5*D"
+            ]
+        }
+    ],
+    "dependent_groups": [
+        {
+            "name": "Brackets",
+            "search_terms": [
+                "VHV5-AM1"
+            ],
+            "exclusion_terms": []
+        },
+        {
+            "name": "Power and IO cables",
+            "search_terms": [
+                "V430-W8-3M"
+            ],
+            "exclusion_terms": []
+        },
+        {
+            "name": "Polarizers and Diffuzers",
+            "search_terms": [
+                "VHV5-AF3",
+                "VHV5-AF2"
+            ],
+            "exclusion_terms": []
+        },
+        {
+            "name": "Ethernet cable",
+            "search_terms": [
+                "61-9000134-02"
+            ],
+            "exclusion_terms": []
+        }
+    ],
+    "mapping_selections": {
+        "Main code reader units": {
+            "mapping_group_name": "VHV5 Mapping",
+            "selected_dependents": [
+                {
+                    "name": "Brackets",
+                    "Objective Mapping": true,
+                    "multiple": 1.0
+                },
+                {
+                    "name": "Power and IO cables",
+                    "Objective Mapping": true,
+                    "multiple": 1.0
+                },
+                {
+                    "name": "Polarizers and Diffuzers",
+                    "Objective Mapping": false,
+                    "multiple": 1.0
+                },
+                {
+                    "name": "Ethernet cable",
+                    "Objective Mapping": true,
+                    "multiple": 1.0
+                }
+            ]
+        }
+    }
+}
