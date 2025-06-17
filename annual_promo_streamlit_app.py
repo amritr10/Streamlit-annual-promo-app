@@ -592,12 +592,12 @@ else:
 
 # ------------------------- Sorting the Final Products -------------------------
 if sort_option in ["Price: Low to High", "Price: High to Low"]:
-    if "Sale price in Australia" in filtered_df.columns:
-        filtered_df["Sale price in Australia"] = pd.to_numeric(filtered_df["Sale price in Australia"], errors="coerce")
+    if "List Price" in filtered_df.columns:
+        filtered_df["List Price"] = pd.to_numeric(filtered_df["List Price"], errors="coerce")
         if sort_option == "Price: Low to High":
-            filtered_df = filtered_df.sort_values(by="Sale price in Australia", ascending=True)
+            filtered_df = filtered_df.sort_values(by="List Price", ascending=True)
         else:
-            filtered_df = filtered_df.sort_values(by="Sale price in Australia", ascending=False)
+            filtered_df = filtered_df.sort_values(by="List Price", ascending=False)
 elif sort_option in ["Name: A to Z", "Name: Z to A"]:
     if "Name" in filtered_df.columns:
         if sort_option == "Name: A to Z":
@@ -668,9 +668,11 @@ else:
                             return f"${float(x):.2f}"
                         except Exception:
                             return x
-                    if "Sale price in Australia" in exp_products_df.columns:
-                        exp_products_df["Sale price in Australia"] = exp_products_df["Sale price in Australia"].apply(format_price)
-                    cols_to_show = ["Name", "Description", "Sale price in Australia", "Promo Catalogue Print?", "Buy URL"]
+                    if "List Price" in exp_products_df.columns:
+                        exp_products_df["List Price"] = exp_products_df["List Price"].apply(format_price)
+                    if "Distributor Price" in exp_products_df.columns:
+                        exp_products_df["Distributor Price"] = exp_products_df["Distributor Price"].apply(format_price)
+                    cols_to_show = ["Name", "Description", "List Price", "Distributor Price", "Promo Catalogue Print?", "Buy URL"]
                     cols_to_show = [col for col in cols_to_show if col in exp_products_df.columns]
                     st.table(exp_products_df[cols_to_show].reset_index(drop=True))
                 else:
@@ -975,7 +977,8 @@ else:
     <div>
       <h5>{row['Name']}</h5>
       <p><strong>Description:</strong> {row['Description']}</p>
-      <p><strong>Price:</strong> <span class="price">${row['Sale price in Australia']}</span></p>
+      <p><strong>List Price:</strong> <span class="price">${row['List Price']}</span></p>
+      <p><strong>Distributor Price:</strong> <span class="price">${row['Distributor Price']}</span></p>
       <a href="{buy_url}" target="_blank">
          <button class="buy-button">Buy Now</button>
       </a>
@@ -1000,9 +1003,11 @@ else:
                             return f"${float(x):.2f}"
                         except Exception:
                             return x
-                    if "Sale price in Australia" in table_df.columns:
-                        table_df["Sale price in Australia"] = table_df["Sale price in Australia"].apply(format_price)
-                    cols_to_show = ["Name", "Description", "Sale price in Australia", "Promo Catalogue Print?", "Buy URL"]
+                    if "List Price" in table_df.columns:
+                        table_df["List Price"] = table_df["List Price"].apply(format_price)
+                    if "Distributor Price" in table_df.columns:
+                        table_df["Distributor Price"] = table_df["Distributor Price"].apply(format_price)
+                    cols_to_show = ["Name", "Description", "List Price", "Distributor Price", "Promo Catalogue Print?", "Buy URL"]
                     cols_to_show = [col for col in cols_to_show if col in table_df.columns]
                     st.table(table_df[cols_to_show].reset_index(drop=True))
 
