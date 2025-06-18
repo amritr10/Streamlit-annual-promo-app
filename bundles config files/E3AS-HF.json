@@ -1,0 +1,35 @@
+{
+    "num_parent_groups": 1,
+    "num_dependent_groups": 1,
+    "parent_groups": [
+        {
+            "name": "Main Sensor unit",
+            "search_terms": [
+                "E3AS-HF6000DMT M1H",
+                "E3AS-HF6000SMT M1H"
+            ],
+            "exclusion_terms": []
+        }
+    ],
+    "dependent_groups": [
+        {
+            "name": "Cables",
+            "search_terms": [
+                "XS2F-D421-G80-F"
+            ],
+            "exclusion_terms": []
+        }
+    ],
+    "mapping_selections": {
+        "Main Sensor unit": {
+            "mapping_group_name": "E3AS-HF mapping",
+            "selected_dependents": [
+                {
+                    "name": "Cables",
+                    "Objective Mapping": true,
+                    "multiple": 1.0
+                }
+            ]
+        }
+    }
+}

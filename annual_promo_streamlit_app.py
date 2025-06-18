@@ -674,7 +674,11 @@ else:
                         exp_products_df["Distributor Price"] = exp_products_df["Distributor Price"].apply(format_price)
                     cols_to_show = ["Name", "Description", "List Price", "Distributor Price", "Promo Catalogue Print?", "Buy URL"]
                     cols_to_show = [col for col in cols_to_show if col in exp_products_df.columns]
-                    st.table(exp_products_df[cols_to_show].reset_index(drop=True))
+                    display_df = exp_products_df.reset_index(drop=True)
+                    st.table(display_df.head(10)[cols_to_show])
+                    if len(display_df) > 10:
+                        with st.expander("Show more"):
+                            st.table(display_df.iloc[10:][cols_to_show])
                 else:
                     st.info("No products found for the selected series.")
 
@@ -709,11 +713,11 @@ else:
                                 st.write("No feature image available")
                         st.markdown("---")
 
-                # ----- Section 3.5: Bundle Network -----
+                # ----- Section 3.5: Bundle Network (REPLACED) -----
                 st.markdown("---")
-                st.subheader("Bundle Network")
+                st.subheader("Demo Bundle")
 
-                # find the JSON config for this series
+                # 1) load the JSON config for this series
                 config_dir = "bundles config files"
                 pattern    = os.path.join(config_dir, f"*{selected_series_exp}*.json")
                 cfg_files  = glob.glob(pattern)
@@ -729,144 +733,149 @@ else:
                         bundle_cfg = None
 
                 if bundle_cfg:
-                    # ---- build mapping structures ----
-                    pg_cfg = bundle_cfg["parent_groups"][0]
-                    parent_name = pg_cfg["name"]
-                    sel_block = bundle_cfg["mapping_selections"][parent_name]
-                    mapping_name = sel_block["mapping_group_name"]
-                    entries = []
-                    for dep in sel_block["selected_dependents"]:
-                        entries.append({
-                            "Dependent Group": dep["name"],
-                            "Type": ("Objective" if dep.get("Objective Mapping", False)
-                                    else "Subjective"),
-                            "Multiple": dep.get("multiple",1.0)
-                        })
-                    mappings_data     = {mapping_name: pd.DataFrame(entries)}
-                    mapping_to_parent = {mapping_name: parent_name}
-
-                    # ---- filter the products for this series into a small DF ----
+                    # filter your products down to just this series
                     bundle_df = filtered_df[filtered_df["Series"] == selected_series_exp].copy()
-                    # bring price into a numeric column
-                    bundle_df["_price"] = pd.to_numeric(bundle_df["Sale price in Australia"], errors="coerce")
+                    bundle_df["_price"] = pd.to_numeric(bundle_df.get("Sale price in Australia",""), errors="coerce")
 
-                    # ---- parent group options ----
-                    parent_df, _ = filter_and_sum(
-                        bundle_df,
-                        pg_cfg["search_terms"],
-                        pg_cfg.get("exclusion_terms", []),
-                        column_name="Name",    # <<< match on Name
-                        sum_columns=[]
-                    )
-                    # build the option labels: "Name – Description"
-                    parent_opts = [
-                        f"{row.Name} – {row.Description}"
-                        for _,row in parent_df.iterrows()
-                    ]
-                    # insert a placeholder
-                    parent_opts = ["— select —"] + parent_opts
+                    # 2) Build mappings_data & mapping_to_parent from _all_ parent_groups
+                    mappings_data     = {}
+                    mapping_to_parent = {}
+                    for pg_cfg in bundle_cfg["parent_groups"]:
+                        pg_name = pg_cfg["name"]
+                        sel_block = bundle_cfg["mapping_selections"].get(pg_name, {})
+                        mg_name   = sel_block.get("mapping_group_name", pg_name)
+                        entries   = []
+                        for dep in sel_block.get("selected_dependents", []):
+                            entries.append({
+                                "Dependent Group": dep["name"],
+                                "Type": ("Objective" if dep.get("Objective Mapping",False) else "Subjective"),
+                                "Multiple": float(dep.get("multiple",1.0))
+                            })
+                        if entries:
+                            mappings_data[mg_name]     = pd.DataFrame(entries)
+                            mapping_to_parent[mg_name] = pg_name
 
-                    sel_parent_label = st.selectbox(
-                        f"Select product for {parent_name}",
-                        options=parent_opts,
-                        index=0,
-                        key="bundle_sel_parent"
-                    )
-                    # extract the actual Name back (or None if placeholder)
-                    if sel_parent_label == "— select —":
-                        sel_parent = None
-                    else:
-                        sel_parent = sel_parent_label.split(" – ")[0]
-
-                    # ---- dependent groups ----
-                    dependent_dfs = {}
-                    sel_dependent = {}
-                    rename_map    = {}           # will hold group_name → selected product name
-
-                    for dg_cfg in bundle_cfg["dependent_groups"]:
-                        dg = dg_cfg["name"]
-                        df_d, _ = filter_and_sum(
+                    # 3) Build one selector per parent group
+                    sel_parent    = {}
+                    parent_dfs    = {}
+                    for i, pg_cfg in enumerate(bundle_cfg["parent_groups"]):
+                        pg_name = pg_cfg["name"]
+                        dfp, _  = filter_and_sum(
                             bundle_df,
-                            dg_cfg["search_terms"],
-                            dg_cfg.get("exclusion_terms", []),
+                            pg_cfg["search_terms"],
+                            pg_cfg.get("exclusion_terms",[]),
                             column_name="Name",
                             sum_columns=[]
                         )
-                        dependent_dfs[dg] = df_d
-
-                        opts = [f"{r.Name} – {r.Description}" for _,r in df_d.iterrows()]
+                        parent_dfs[pg_name] = dfp
+                        opts = [f"{r.Name} – {r.Description}" for _,r in dfp.iterrows()]
                         opts = ["— select —"] + opts
+                        lbl = st.selectbox(f"Select product for {pg_name}", opts, key=f"bundle_sel_parent_{i}")
+                        sel_parent[pg_name] = None if lbl=="— select —" else lbl.split(" – ")[0]
 
-                        lbl = st.selectbox(
-                            f"Select product for {dg}",
-                            options=opts,
-                            index=0,
-                            key=f"bundle_sel_{dg}"
+                    # 4) Build one selector per dependent group
+                    sel_dependent = {}
+                    dependent_dfs = {}
+                    for j, dg_cfg in enumerate(bundle_cfg["dependent_groups"]):
+                        dg_name = dg_cfg["name"]
+                        dfd, _  = filter_and_sum(
+                            bundle_df,
+                            dg_cfg["search_terms"],
+                            dg_cfg.get("exclusion_terms",[]),
+                            column_name="Name",
+                            sum_columns=[]
                         )
-                        if lbl == "— select —":
-                            sel = None
-                        else:
-                            sel = lbl.split(" – ")[0]
-                        sel_dependent[dg] = sel
+                        dependent_dfs[dg_name] = dfd
+                        opts = [f"{r.Name} – {r.Description}" for _,r in dfd.iterrows()]
+                        opts = ["— select —"] + opts
+                        lbl = st.selectbox(f"Select product for {dg_name}", opts, key=f"bundle_sel_dep_{j}")
+                        sel_dependent[dg_name] = None if lbl=="— select —" else lbl.split(" – ")[0]
 
-                    # build rename_map (for graph labels)
-                    if sel_parent:
-                        rename_map[parent_name] = sel_parent
-                    for dg, prod in sel_dependent.items():
-                        if prod:
-                            rename_map[dg] = prod
-
-                    # ---- draw the graph ----
-                    flat_df = flatten_mappings(mappings_data, mapping_to_parent)
-                    dot_lines = ["digraph G {", "  rankdir=LR;"]
-                    # nodes
-                    for pg in flat_df["Parent Group"].unique():
-                        label = rename_map.get(pg, pg)
-                        dot_lines.append(
-                            f'  "{pg}" [label="{label}", shape=box, style=filled, fillcolor=lightblue];'
-                        )
-                    for dg in flat_df["Dependent Group"].unique():
-                        label = rename_map.get(dg, dg)
-                        dot_lines.append(
-                            f'  "{dg}" [label="{label}", shape=ellipse, style=filled, fillcolor=lightgreen];'
-                        )
-                    # edges
-                    for _,r in flat_df.iterrows():
-                        style = "solid" if r["Type"]=="Objective" else "dashed"
-                        color = "blue"   if r["Type"]=="Objective" else "gray"
-                        dot_lines.append(
-                            f'  "{r["Parent Group"]}" -> "{r["Dependent Group"]}" '
-                            f'[label="{r["Type"]} ({r["Multiple"]})", style="{style}", color="{color}"];'
-                        )
-                    dot_lines.append("}")
-                    st.graphviz_chart("\n".join(dot_lines), use_container_width=True)
-
-                    # ---- total price ----
-                    total_price = 0.0
-                    if sel_parent:
-                        row = parent_df[parent_df["Name"]==sel_parent]
-                        total_price += float(row["_price"].iloc[0] or 0)
+                    # 5) Collect your renames
+                    rename_map = {}
+                    for pg, sel in sel_parent.items():
+                        if sel: rename_map[pg] = sel
                     for dg, sel in sel_dependent.items():
-                        if sel:
-                            df_d = dependent_dfs[dg]
-                            row = df_d[df_d["Name"]==sel]
-                            total_price += float(row["_price"].iloc[0] or 0)
-                    st.markdown(f"**Total Bundle Price:** ${total_price:.2f}")
+                        if sel: rename_map[dg] = sel
 
-                    # ---- bill of materials ----
-                    bom = []
-                    if sel_parent:
-                        bom.append((parent_name, sel_parent))
-                    for dg,sel in sel_dependent.items():
-                        if sel:
-                            bom.append((dg, sel))
+                    # 6) Flatten & draw one single graph (with type->label translation & multi-line node labels)
+                    type_label_map = {
+                        "Objective":  "Required",
+                        "Subjective": "Optional"
+                    }
 
+                    # rebuild the flat_df as before
+                    flat_df = flatten_mappings(mappings_data, mapping_to_parent)
+
+                    if flat_df.empty:
+                        st.info("No mappings to display for this series.")
+                    else:
+                        # start the graph
+                        dot = [
+                        "digraph G {",
+                        "  rankdir=LR;",
+                        "  node [fontname=\"Arial\"];"
+                        ]
+                        # 1) nodes, using HTML-style labels so we can do two lines
+                        for pg in flat_df["Parent Group"].unique():
+                            chosen = rename_map.get(pg)
+                            if chosen:
+                                # group name on the first line, chosen item in smaller font below
+                                label_html = f'<<B>{pg}</B><BR/><FONT POINT-SIZE="10">{chosen}</FONT>>'
+                            else:
+                                label_html = f'"{pg}"'
+                            dot.append(
+                            f'  "{pg}" [label={label_html}, '
+                            f'shape=box, style=filled, fillcolor=lightblue];'
+                            )
+
+                        for dg in flat_df["Dependent Group"].unique():
+                            chosen = rename_map.get(dg)
+                            if chosen:
+                                label_html = f'<<B>{dg}</B><BR/><FONT POINT-SIZE="10">{chosen}</FONT>>'
+                            else:
+                                label_html = f'"{dg}"'
+                            dot.append(
+                            f'  "{dg}" [label={label_html}, '
+                            f'shape=ellipse, style=filled, fillcolor=lightgreen];'
+                            )
+
+                        # 2) edges, translating the Type into your friendly verbs
+                        for _, r in flat_df.iterrows():
+                            orig = r["Type"]
+                            verb = type_label_map.get(orig, orig)
+                            style = "solid" if orig == "Objective" else "dashed"
+                            color = "blue"   if orig == "Objective" else "gray"
+                            dot.append(
+                            f'  "{r["Parent Group"]}" -> "{r["Dependent Group"]}" '
+                            f'[label="{verb} ({r["Multiple"]})", style="{style}", color="{color}"];'
+                            )
+
+                        dot.append("}")
+                        st.graphviz_chart("\n".join(dot), use_container_width=True)
+
+                    # 7) Total bundle price
+                    total = 0.0
+                    for pg, dfp in parent_dfs.items():
+                        sel = sel_parent.get(pg)
+                        if sel:
+                            row = dfp[dfp["Name"]==sel]
+                            if not row.empty: total += float(row["_price"].iloc[0] or 0)
+                    for dg, dfd in dependent_dfs.items():
+                        sel = sel_dependent.get(dg)
+                        if sel:
+                            row = dfd[dfd["Name"]==sel]
+                            if not row.empty: total += float(row["_price"].iloc[0] or 0)
+                    st.markdown(f"**Total Bundle Price:** ${total:.2f}")
+
+                    # 8) Bill of Materials
+                    bom = [(g,s) for g,s in list(sel_parent.items())+list(sel_dependent.items()) if s]
                     if bom:
                         st.markdown("**Bill of Materials**")
-                        for group, prod_name in bom:
-                            st.write(f"- {group}: {prod_name}")
-                # else: bundle_cfg was None → already handled above
-
+                        for group, prod in bom:
+                            st.write(f"- {group}: {prod}")
+                else:
+                    st.info("No bundle configuration found or failed to load.")
                 # ----- Section 4: Videos -----
                 st.markdown("---")
                 st.header("Videos")
@@ -1009,7 +1018,11 @@ else:
                         table_df["Distributor Price"] = table_df["Distributor Price"].apply(format_price)
                     cols_to_show = ["Name", "Description", "List Price", "Distributor Price", "Promo Catalogue Print?", "Buy URL"]
                     cols_to_show = [col for col in cols_to_show if col in table_df.columns]
-                    st.table(table_df[cols_to_show].reset_index(drop=True))
+                    display_df = table_df.reset_index(drop=True)
+                    st.table(display_df.head(10)[cols_to_show])
+                    if len(display_df) > 10:
+                        with st.expander("Show more"):
+                            st.table(display_df.iloc[10:][cols_to_show])
 
 # ------------------------- Hide Streamlit Menu -------------------------
 hide_st_style = """

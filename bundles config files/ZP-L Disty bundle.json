@@ -1,0 +1,93 @@
+{
+    "num_parent_groups": 2,
+    "num_dependent_groups": 4,
+    "parent_groups": [
+        {
+            "name": "Sensor Head for Master",
+            "search_terms": [
+                "ZP-LS050S 2M",
+                "ZP-LS300L 2M",
+                "ZP-LS600S 2M"
+            ],
+            "exclusion_terms": []
+        },
+        {
+            "name": "Sensor Head for Slave",
+            "search_terms": [
+                "ZP-LS050S 2M",
+                "ZP-LS300L 2M",
+                "ZP-LS600S 2M"
+            ],
+            "exclusion_terms": []
+        }
+    ],
+    "dependent_groups": [
+        {
+            "name": "Master Amplifier",
+            "search_terms": [
+                "ZP-L3000",
+                "ZP-L3050"
+            ],
+            "exclusion_terms": []
+        },
+        {
+            "name": "Slave Amplifier",
+            "search_terms": [
+                "ZP-L3560"
+            ],
+            "exclusion_terms": []
+        },
+        {
+            "name": "Ethernet IP unit",
+            "search_terms": [
+                "ZP-EIP"
+            ],
+            "exclusion_terms": []
+        },
+        {
+            "name": "Mounting Bracket",
+            "search_terms": [
+                "ZP-XL3",
+                "ZP-XL4"
+            ],
+            "exclusion_terms": []
+        }
+    ],
+    "mapping_selections": {
+        "Sensor Head for Master": {
+            "mapping_group_name": "Sensor Head master to amplifier",
+            "selected_dependents": [
+                {
+                    "name": "Master Amplifier",
+                    "Objective Mapping": true,
+                    "multiple": 1.0
+                },
+                {
+                    "name": "Ethernet IP unit",
+                    "Objective Mapping": false,
+                    "multiple": 1.0
+                },
+                {
+                    "name": "Mounting Bracket",
+                    "Objective Mapping": true,
+                    "multiple": 1.0
+                }
+            ]
+        },
+        "Sensor Head for Slave": {
+            "mapping_group_name": "P_2 Mapping",
+            "selected_dependents": [
+                {
+                    "name": "Slave Amplifier",
+                    "Objective Mapping": true,
+                    "multiple": 1.0
+                },
+                {
+                    "name": "Mounting Bracket",
+                    "Objective Mapping": true,
+                    "multiple": 1.0
+                }
+            ]
+        }
+    }
+}

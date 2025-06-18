@@ -6,7 +6,9 @@
             "name": "Main code reader units",
             "search_terms": [
                 "VHV5-F000L050M-SRX",
-                "VHV5-F000L050M-HRX"
+                "VHV5-F000L050M-HRX",
+                "VHV5-F000M023M-SRX",
+                "VHV5-F000M050M-HRX"
             ],
             "exclusion_terms": [
                 "VHV5*D"
