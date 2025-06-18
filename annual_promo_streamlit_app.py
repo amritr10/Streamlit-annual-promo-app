@@ -854,26 +854,57 @@ else:
                         dot.append("}")
                         st.graphviz_chart("\n".join(dot), use_container_width=True)
 
-                    # 7) Total bundle price
-                    total = 0.0
-                    for pg, dfp in parent_dfs.items():
-                        sel = sel_parent.get(pg)
-                        if sel:
-                            row = dfp[dfp["Name"]==sel]
-                            if not row.empty: total += float(row["_price"].iloc[0] or 0)
-                    for dg, dfd in dependent_dfs.items():
-                        sel = sel_dependent.get(dg)
-                        if sel:
-                            row = dfd[dfd["Name"]==sel]
-                            if not row.empty: total += float(row["_price"].iloc[0] or 0)
-                    st.markdown(f"**Total Bundle Price:** ${total:.2f}")
+                    # 7) Total bundle price – only once a parent is selected and its required Objective mappings are chosen
+                    # 7a) which parents did the user pick?
+                    selected_parents = [pg for pg, sel in sel_parent.items() if sel]
 
-                    # 8) Bill of Materials
-                    bom = [(g,s) for g,s in list(sel_parent.items())+list(sel_dependent.items()) if s]
-                    if bom:
-                        st.markdown("**Bill of Materials**")
-                        for group, prod in bom:
-                            st.write(f"- {group}: {prod}")
+                    # 7b) if none picked, prompt and don't calculate
+                    if not selected_parents:
+                        st.info("Please select at least one parent product to begin bundle pricing.")
+                    else:
+                        # 7c) for each selected parent gather its required (Objective) dependents
+                        missing = []
+                        for pg in selected_parents:
+                            required_dgs = flat_df[
+                                (flat_df["Parent Group"] == pg) & (flat_df["Type"] == "Objective")
+                            ]["Dependent Group"].unique().tolist()
+                            for dg in required_dgs:
+                                if not sel_dependent.get(dg):
+                                    missing.append(f"{dg} (for {pg})")
+
+                        # 7d) if any required dependent is still un-selected, prompt and stop
+                        if missing:
+                            st.info(
+                                "Please select all required Objective mappings before "
+                                "we can calculate your total bundle price.  "
+                                f"Missing: {', '.join(missing)}"
+                            )
+                        else:
+                            # 7e) now compute total: sum picked parents + any picked dependents (Objective or Subjective)
+                            total = 0.0
+                            for pg in selected_parents:
+                                row = parent_dfs[pg][parent_dfs[pg]["Name"] == sel_parent[pg]]
+                                if not row.empty:
+                                    total += float(row["_price"].iloc[0] or 0)
+                            for dg, dfd in dependent_dfs.items():
+                                sel = sel_dependent.get(dg)
+                                if sel:
+                                    row = dfd[dfd["Name"] == sel]
+                                    if not row.empty:
+                                        total += float(row["_price"].iloc[0] or 0)
+
+                            st.markdown(f"**Total Bundle Price:** ${total:.2f}")
+
+                            # 8) Bill of Materials
+                            bom = [
+                                (g, s)
+                                for g, s in list(sel_parent.items()) + list(sel_dependent.items())
+                                if s
+                            ]
+                            if bom:
+                                st.markdown("**Bill of Materials**")
+                                for group, prod in bom:
+                                    st.write(f"- {group}: {prod}")
                 else:
                     st.info("No bundle configuration found or failed to load.")
                 # ----- Section 4: Videos -----
