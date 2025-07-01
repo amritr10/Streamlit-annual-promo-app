@@ -7,6 +7,7 @@ from streamlit_gsheets import GSheetsConnection
 import os
 import glob
 import json
+from datetime import datetime
 
 # ------------------------- Helper Functions -------------------------
 def reset_all_filters():
@@ -16,7 +17,7 @@ def reset_all_filters():
     reset_keys = [
         "search_query", "search_bar_input",
         "selected_category", "selected_product_group",
-        "selected_series", "selected_lifecycle"
+        "selected_series", "selected_lifecycle","promo_catalogue_filter"
     ]
     for key in list(st.session_state.keys()):
         if (key in reset_keys or
@@ -26,7 +27,9 @@ def reset_all_filters():
 
     # Explicitly reset the Product Group to its default value
     st.session_state["selected_product_group"] = "All Product Groups"
+    st.session_state["selected_category"] = "All Categories"
     st.session_state["view_mode"] = "Table View"
+    st.session_state["promo_catalogue_filter"] = False
     st.rerun()
 
 def search_callback():
@@ -252,39 +255,77 @@ if not st.session_state.logged_in:
         password   = st.text_input("Password", type="password", help="Enter the promotion password")
         submitted  = st.form_submit_button("View promotion")
         if submitted:
-            if not (first_name.strip() and last_name.strip() and email.strip() and company.strip() and password.strip()):
+            # 1) basic required‐fields check
+            if not (first_name.strip() and last_name.strip()
+                    and email.strip() and company.strip() 
+                    and password.strip()):
                 st.error("All fields are required.")
-            elif password.strip() != "au$promo2025":
+                st.stop()
+
+            # 2) domain‐check
+            allowed_domains = [
+                "@omron.com"
+            ]
+            email_clean = email.strip().lower()
+            if not any(email_clean.endswith(d) for d in allowed_domains):
+                st.error(
+                f"You're not allowed to access this. "
+                f"Please contact Amrit"
+                )
+                st.stop()
+
+            # 3) password‐check
+            if password.strip() != "au$promo2025":
                 st.error("Incorrect password. Please try again.")
-            else:
-                try:
-                    conn = st.connection("gsheets", type=GSheetsConnection)
-                    users_data = conn.read()
-                    email_exists = False
-                    if users_data is not None:
-                        if isinstance(users_data, pd.DataFrame):
-                            if email.strip().lower() in users_data["Email"].str.lower().values:
-                                email_exists = True
-                        else:
-                            for row in users_data:
-                                if row.get("Email", "").strip().lower() == email.strip().lower():
-                                    email_exists = True
-                                    break
-                    if not email_exists:
-                        new_entry = pd.DataFrame([{
-                            "First Name": first_name.strip(),
-                            "Last Name": last_name.strip(),
-                            "Email": email.strip(),
-                            "Company": company.strip()
-                        }])
-                        existing_data = users_data if isinstance(users_data, pd.DataFrame) else pd.DataFrame(users_data)
-                        updated_data = pd.concat([existing_data, new_entry], ignore_index=True)
-                        conn.update(data=updated_data)
-                except Exception as e:
-                    st.error(f"Error connecting to Google Sheets: {str(e)}")
-                    st.stop()
-                st.session_state.logged_in = True
-                st.rerun()
+                st.stop()
+
+            # 4) at this point, both domain & password are good → record login time
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 5) read & normalize your sheet data into a DataFrame
+            try:
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                raw = conn.read()  # could be DataFrame or list-of-dicts or None
+                if raw is None:
+                    users_df = pd.DataFrame(columns=[
+                        "First Name","Last Name","Email","Company","Last login"
+                    ])
+                elif isinstance(raw, pd.DataFrame):
+                    users_df = raw.copy()
+                else:
+                    users_df = pd.DataFrame(raw)
+
+                # ensure the “Last login” column exists
+                if "Last login" not in users_df.columns:
+                    users_df["Last login"] = ""
+
+                # 6) find existing row (case‐insensitive match)
+                mask = users_df["Email"].str.lower() == email_clean
+                if mask.any():
+                    # update their timestamp
+                    users_df.loc[mask, "Last login"] = now
+                else:
+                    # append a new record
+                    new_row = {
+                        "First Name": first_name.strip(),
+                        "Last Name" : last_name.strip(),
+                        "Email"     : email.strip(),
+                        "Company"   : company.strip(),
+                        "Last login": now
+                    }
+                    users_df = pd.concat([users_df, pd.DataFrame([new_row])],
+                                        ignore_index=True)
+
+                # 7) write the sheet back
+                conn.update(data=users_df)
+
+            except Exception as e:
+                st.error(f"Error connecting to Google Sheets: {e}")
+                st.stop()
+
+            # finally, mark them logged in & rerun
+            st.session_state.logged_in = True
+            st.rerun()
     st.stop()
 
 # ==================== MAIN APPLICATION ====================
@@ -388,27 +429,70 @@ if "Product Group" in df.columns:
 else:
     st.sidebar.info("No 'Product Group' column found in the dataset.")
 
-all_categories = sorted(df["Category"].dropna().unique())
+# ――――――― Dynamic Category ↔ Series linkage ―――――――
+picked_series = st.session_state.get("selected_series", [])
+
+# 1) figure out which categories those series live in (if any)
+if picked_series:
+    cats_for_series = (
+        df[df["Series"].isin(picked_series)]
+          ["Category"]
+          .dropna()
+          .unique()
+          .tolist()
+    )
+    cats_for_series.sort()
+else:
+    cats_for_series = None
+
+# 2) decide what to show in the Category dropdown
+if cats_for_series is None:
+    category_options = sorted(df["Category"].dropna().unique())
+else:
+    category_options = cats_for_series
+
+# 3) if the user has picked series but their current category
+#    isn’t one of the cats_for_series, auto-sync:
+cur_cat = st.session_state.get("selected_category", "All Categories")
+if cats_for_series:
+    if cur_cat not in cats_for_series:
+        if len(cats_for_series) == 1:
+            st.session_state["selected_category"] = cats_for_series[0]
+        else:
+            st.session_state["selected_category"] = "All Categories"
+
+# 4) render the Category selector
 selected_category = st.sidebar.selectbox(
-    "Select Category", 
-    options=["All Categories"] + all_categories, 
+    "Select Category",
+    options=["All Categories"] + category_options,
     key="selected_category"
 )
+
+# 5) if they’ve picked series across >1 category, force them to choose one
+if cats_for_series and len(cats_for_series) > 1 and selected_category == "All Categories":
+    st.sidebar.warning(
+        "You’ve picked Series spanning multiple Categories.  "
+        "Please choose a Category to unlock the spec-filters."
+    )
+
+# 6) now filter down by category
 if selected_category != "All Categories":
     filtered_df = df[df["Category"] == selected_category].copy()
 else:
     filtered_df = df.copy()
-    
+
+# 7) finally render your Series multiselect (it will pull from the filtered_df)
 available_series = sorted(filtered_df["Series"].dropna().unique())
 selected_series = st.sidebar.multiselect(
-    "Select Series", 
-    options=available_series, 
-    default=[], 
+    "Select Series",
+    options=available_series,
     key="selected_series",
+    default=st.session_state.get("selected_series", []),
     help="Select one or more series to filter products"
 )
 if selected_series:
-    filtered_df = filtered_df[filtered_df["Series"].isin(selected_series)]
+    filtered_df = filtered_df[filtered_df["Series"].isin(selected_series)].copy()
+# ――――――― end Dynamic Category ↔ Series linkage ―――――――
 
 # ------------------------- Specification Filters -------------------------
 if selected_category != "All Categories":
@@ -1056,11 +1140,11 @@ else:
                             st.table(display_df.iloc[10:][cols_to_show])
 
 # ------------------------- Hide Streamlit Menu -------------------------
-hide_st_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-"""
-st.markdown(hide_st_style, unsafe_allow_html=True)
+# hide_st_style = """
+#             <style>
+#             #MainMenu {visibility: hidden;}
+#             footer {visibility: hidden;}
+#             header {visibility: hidden;}
+#             </style>
+# """
+# st.markdown(hide_st_style, unsafe_allow_html=True)
