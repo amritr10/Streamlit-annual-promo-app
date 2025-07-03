@@ -26,11 +26,16 @@ SPEC_VIEW_CONFIG = {
         "display_col": "Sensing distance ;number",
         "pivot_col": "Output type ;LOV",
         "pivot_value_col": "Name"
+    },
+    "Photoelectric Sensors": {
+        "group_by_cols": ["Sensing method ;LOV", "Sensing distance ;number"],
+        "display_col": "Connection method ;LOV",
+        "pivot_col": "Output type ;LOV",
+        "pivot_value_col": "Name"
     }
     # You can add configurations for other Product Groups here
     # "Another Product Group": { ... }
 }
-
 
 # ------------------------- Helper Functions -------------------------
 def reset_all_filters():
