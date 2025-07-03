@@ -9,6 +9,29 @@ import glob
 import json
 from datetime import datetime
 
+# ==================== SPECIFICATION VIEW CONFIGURATION ====================
+# Define the layout for the specification view for different product groups.
+# This makes it easy to add new layouts without changing the code.
+#
+# Structure:
+# "Product Group Name": {
+#     "group_by_cols": [List of columns to group by, creating merged rows],
+#     "display_col": "The main column to display for each unique row",
+#     "pivot_col": "Column to create new columns from (e.g., 'PNP', 'NPN')",
+#     "pivot_value_col": "The column containing the model names to be pivoted"
+# }
+SPEC_VIEW_CONFIG = {
+    "Inductive Sensors": {
+        "group_by_cols": ["Size ;LOV", "Mounting type ;LOV", "Connection method ;LOV"],
+        "display_col": "Sensing distance ;number",
+        "pivot_col": "Output type ;LOV",
+        "pivot_value_col": "Name"
+    }
+    # You can add configurations for other Product Groups here
+    # "Another Product Group": { ... }
+}
+
+
 # ------------------------- Helper Functions -------------------------
 def reset_all_filters():
     """Reset all filter-related keys and rerun the app.
@@ -107,6 +130,131 @@ def build_network_dot(flat_df):
         )
     dot.append("}")
     return "\n".join(dot)
+
+# ------------------------- Specification View Table Generator -------------------------
+def generate_spec_table_html(df, config):
+    """
+    Generates an HTML table with merged rows based on the provided configuration.
+    """
+    # --- 1. Data Preparation and Pivoting ---
+    all_cols = config['group_by_cols'] + [config['display_col'], config['pivot_col'], config['pivot_value_col']]
+    
+    # Check if all required columns exist in the dataframe
+    missing_cols = [col for col in all_cols if col not in df.columns]
+    if missing_cols:
+        return f"<p>Error: The following required columns are missing for this view: {', '.join(missing_cols)}</p>"
+
+    # Create a working copy
+    work_df = df[all_cols].copy().dropna(subset=[config['pivot_col'], config['pivot_value_col']])
+    
+    # Define the index for pivoting
+    index_cols = config['group_by_cols'] + [config['display_col']]
+
+    # Pivot the table
+    try:
+        pivot_df = work_df.pivot_table(
+            index=index_cols,
+            columns=config['pivot_col'],
+            values=config['pivot_value_col'],
+            aggfunc='first'
+        ).reset_index()
+    except Exception as e:
+        return f"<p>Error during data pivoting: {e}</p>"
+
+    # Fill NaN values for model columns
+    for col in work_df[config['pivot_col']].unique():
+        if col in pivot_df.columns:
+            pivot_df[col] = pivot_df[col].fillna('')
+
+    # --- 2. Calculate Rowspans ---
+    rowspan_cols = config['group_by_cols']
+    rowspans = {}
+    for i, col in enumerate(rowspan_cols):
+        # Group by the current column and all preceding columns
+        grouping = rowspan_cols[:i+1]
+        counts = pivot_df.groupby(grouping).size()
+
+        # For the first grouping column, the keys from `to_dict()` are not tuples.
+        # We convert them to single-element tuples for consistent lookups later on,
+        # as the lookup key will always be a tuple.
+        if i == 0:
+            rowspans[col] = {(k,): v for k, v in counts.to_dict().items()}
+        else:
+            rowspans[col] = counts.to_dict()
+
+    # --- 3. Build HTML ---
+    # Helper to clean column names for display (e.g., "Size ;LOV" -> "Size")
+    def clean_header(name):
+        return name.split(';')[0].strip().title()
+
+    # Table Headers
+    headers = [clean_header(c) for c in config['group_by_cols']]
+    headers.append(clean_header(config['display_col']))
+    pivot_headers = sorted([col for col in pivot_df.columns if col not in index_cols])
+    headers.extend(pivot_headers)
+
+    html = """
+    <style>
+        .spec-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1rem auto;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            font-family: 'Inter', sans-serif;
+        }
+        .spec-table th, .spec-table td {
+            border: 1px solid #e2e8f0;
+            padding: 12px;
+            text-align: left;
+            vertical-align: middle;
+        }
+        .spec-table thead th {
+            background-color: #0284c7;
+            color: white;
+            font-weight: 600;
+        }
+        .spec-table tbody tr:nth-child(even) { background-color: #f8fafc; }
+        .spec-table tbody tr:hover { background-color: #f1f5f9; }
+        .spec-table td { color: #334155; }
+        .spec-table .font-mono { font-family: 'Courier New', Courier, monospace; }
+    </style>
+    <table class="spec-table">
+        <thead>
+            <tr>
+    """
+    for h in headers:
+        html += f"<th>{h}</th>"
+    html += "</tr></thead><tbody>"
+
+    # Table Body
+    last_values = {col: None for col in rowspan_cols}
+    for index, row in pivot_df.iterrows():
+        html += "<tr>"
+        # Grouping columns with rowspan
+        for i, col in enumerate(rowspan_cols):
+            current_val = row[col]
+            # Check if the value (and all parent values) has changed
+            key = tuple(row[c] for c in rowspan_cols[:i+1])
+            if last_values[col] != key:
+                span = rowspans[col].get(key, 1)
+                html += f'<td rowspan="{span}">{current_val}</td>'
+                last_values[col] = key
+                # Reset tracking for child columns
+                for child_col in rowspan_cols[i+1:]:
+                    last_values[child_col] = None
+        
+        # Display column (no rowspan)
+        html += f"<td>{row[config['display_col']]}</td>"
+
+        # Pivoted value columns
+        for p_col in pivot_headers:
+            html += f"<td class='font-mono'>{row[p_col]}</td>"
+
+        html += "</tr>"
+
+    html += "</tbody></table>"
+    return html
+
 
 # ------------------------- Page Setup -------------------------
 st.set_page_config(page_title="Key Products 2025", layout="wide")
@@ -336,8 +484,13 @@ st.markdown('<div class="proof of concept, internal use"><h2>This website is a p
 
 # ------------------------- Load Product Data -------------------------
 csv_file = "key_products_12_05_25.csv"
-df = pd.read_csv(csv_file)
-df = df.dropna(subset=["Category", "Series"])
+try:
+    df = pd.read_csv(csv_file)
+    df = df.dropna(subset=["Category", "Series"])
+except FileNotFoundError:
+    st.error(f"Error: The file '{csv_file}' was not found. Please make sure it's in the same directory as the script.")
+    st.stop()
+
 
 # ------------------------- Load Series Data with Images and Descriptions -------------------------
 try:
@@ -372,7 +525,6 @@ with col1:
     selected_lifecycle = st.segmented_control(
          label="Product Life Cycle",
          options=lifecycle_values,
-         default="All",
          key="selected_lifecycle"
     )
 with col2:
@@ -428,6 +580,7 @@ if "Product Group" in df.columns:
         df = df[df["Product Group"] == selected_product_group].copy()
 else:
     st.sidebar.info("No 'Product Group' column found in the dataset.")
+    selected_product_group = "All Product Groups" # Set a default
 
 # ――――――― Dynamic Category ↔ Series linkage ―――――――
 picked_series = st.session_state.get("selected_series", [])
@@ -690,11 +843,11 @@ elif sort_option in ["Name: A to Z", "Name: Z to A"]:
             filtered_df = filtered_df.sort_values(by="Name", ascending=False)
 
 # ------------------------- View Mode and Promo Catalogue Filter Switcher -------------------------
+display_options = ["Expander View", "Table View", "Specification View"]
 if selected_lifecycle == "New Product":
-    display_options = ["Expander View", "Table View", "Product Experience View"]
+    display_options.insert(2, "Product Experience View")
     default_view = "Product Experience View"
 else:
-    display_options = ["Expander View", "Table View"]
     default_view = "Table View"
 
 # Place the Display Options on the left and the Promo Catalogue filter on the right.
@@ -711,433 +864,444 @@ if promo_filter:
     else:
         st.warning("The column 'Promo Catalogue Print?' was not found in the dataset.")
 
-# ------------------------- Main Content: New Product Experience View or Original -------------------------
+# ------------------------- Main Content Display -------------------------
 if filtered_df.empty:
     st.info("No products found with the current filters.")
-else:
-    # If the New Product life cycle is selected and the Product Experience View is active,
-    # then show a special new product experience display.
-    if selected_lifecycle == "New Product" and view_mode == "Product Experience View":
-        new_series_list = sorted(filtered_df["Series"].dropna().unique())
-        if new_series_list:
-            selected_series_exp = st.pills("Select Series for New Product Experience", options=new_series_list, key="exp_new_series")
-            series_info_df = series_df[series_df["Series name"].str.strip() == selected_series_exp]
-            if series_info_df.empty:
-                st.error("Select a product series above to explore its details, features, and specifications. Tap to enter the full product experience!")
-            else:
-                series_info = series_info_df.iloc[0]
-                # ----- Section 1: Series Header & Image -----
-                st.markdown("---")
-                col1_sec1, col2_sec1 = st.columns([3, 1])
-                with col1_sec1:
-                    st.title(series_info.get("Series name", ""))
-                    st.header(series_info.get("Short description", ""))
-                    st.write(series_info.get("Description", ""))
-                with col2_sec1:
-                    if pd.notna(series_info.get("Featured image", "")):
-                        st.image(series_info["Featured image"], width=400)
-                    else:
-                        st.write("No image available")
 
-                # ----- Section 2: Products Table -----
-                st.markdown("---")
-                st.header("Products")
-                exp_products_df = filtered_df[filtered_df["Series"]==selected_series_exp].copy()
-                if not exp_products_df.empty:
-                    exp_products_df["Buy URL"] = exp_products_df["SKU"].apply(
-                         lambda sku: "https://store.omron.com.au/product/" + re.sub(r"\s+", "-", sku.strip())
-                    )
-                    def format_price(x):
-                        try:
-                            return f"${float(x):.2f}"
-                        except Exception:
-                            return x
-                    if "List Price" in exp_products_df.columns:
-                        exp_products_df["List Price"] = exp_products_df["List Price"].apply(format_price)
-                    if "Distributor Price" in exp_products_df.columns:
-                        exp_products_df["Distributor Price"] = exp_products_df["Distributor Price"].apply(format_price)
-                    cols_to_show = ["Name", "Description", "List Price", "Distributor Price", "Promo Catalogue Print?", "Buy URL"]
-                    cols_to_show = [col for col in cols_to_show if col in exp_products_df.columns]
-                    display_df = exp_products_df.reset_index(drop=True)
-                    st.table(display_df.head(10)[cols_to_show])
-                    if len(display_df) > 10:
-                        with st.expander("Show more"):
-                            st.table(display_df.iloc[10:][cols_to_show])
+# ---- NEW: Specification View ----
+elif view_mode == "Specification View":
+    if selected_product_group == "All Product Groups":
+        st.warning("Please select a specific Product Group from the sidebar to use the Specification View.")
+    else:
+        config = SPEC_VIEW_CONFIG.get(selected_product_group)
+        if config:
+            html_table = generate_spec_table_html(filtered_df, config)
+            st.markdown(html_table, unsafe_allow_html=True)
+        else:
+            st.info(f"The Specification View is not configured for the '{selected_product_group}' Product Group.")
+
+# ---- Product Experience View ----
+elif selected_lifecycle == "New Product" and view_mode == "Product Experience View":
+    new_series_list = sorted(filtered_df["Series"].dropna().unique())
+    if new_series_list:
+        selected_series_exp = st.pills("Select Series for New Product Experience", options=new_series_list, key="exp_new_series")
+        series_info_df = series_df[series_df["Series name"].str.strip() == selected_series_exp]
+        if series_info_df.empty:
+            st.error("Select a product series above to explore its details, features, and specifications. Tap to enter the full product experience!")
+        else:
+            series_info = series_info_df.iloc[0]
+            # ----- Section 1: Series Header & Image -----
+            st.markdown("---")
+            col1_sec1, col2_sec1 = st.columns([3, 1])
+            with col1_sec1:
+                st.title(series_info.get("Series name", ""))
+                st.header(series_info.get("Short description", ""))
+                st.write(series_info.get("Description", ""))
+            with col2_sec1:
+                if pd.notna(series_info.get("Featured image", "")):
+                    st.image(series_info["Featured image"], width=400)
                 else:
-                    st.info("No products found for the selected series.")
+                    st.write("No image available")
 
-                # ----- Section 3: Features -----
-                st.markdown("---")
-                st.header("Features")
-                feature_indices = []
-                for col in series_info.index:
-                    m = re.match(r"Feature set header (\d+)$", col)
-                    if m:
-                        feature_indices.append(int(m.group(1)))
-                feature_indices.sort()
-                for i, idx in enumerate(feature_indices):
-                    header = series_info.get(f"Feature set header {idx}", "")
-                    desc   = series_info.get(f"Feature set description {idx}", "")
-                    img    = series_info.get(f"Feature set image {idx}", "")
-                    header = header if pd.notna(header) else ""
-                    desc   = desc if pd.notna(desc) else ""
-                    img    = img if pd.notna(img) else ""
-                    if header or desc or img:
-                        if i % 2 == 0:
-                            text_col, img_col = st.columns([3, 1])
-                        else:
-                            img_col, text_col = st.columns([1, 3])
-                        with text_col:
-                            st.subheader(header)
-                            st.write(desc)
-                        with img_col:
-                            if img:
-                                st.image(img, width=400)
-                            else:
-                                st.write("No feature image available")
-                        st.markdown("---")
-
-                # ----- Section 3.5: Bundle Network (REPLACED) -----
-                st.markdown("---")
-                st.subheader("Demo Bundle")
-
-                # 1) load the JSON config for this series
-                config_dir = "bundles config files"
-                pattern    = os.path.join(config_dir, f"*{selected_series_exp}*.json")
-                cfg_files  = glob.glob(pattern)
-                if not cfg_files:
-                    st.info(f"No bundle configuration found for series '{selected_series_exp}'.")
-                    bundle_cfg = None
-                else:
+            # ----- Section 2: Products Table -----
+            st.markdown("---")
+            st.header("Products")
+            exp_products_df = filtered_df[filtered_df["Series"]==selected_series_exp].copy()
+            if not exp_products_df.empty:
+                exp_products_df["Buy URL"] = exp_products_df["SKU"].apply(
+                     lambda sku: "https://store.omron.com.au/product/" + re.sub(r"\s+", "-", sku.strip())
+                )
+                def format_price(x):
                     try:
-                        with open(cfg_files[0], "r") as f:
-                            bundle_cfg = json.load(f)
-                    except Exception as e:
-                        st.error(f"Failed to parse {cfg_files[0]}: {e}")
-                        bundle_cfg = None
+                        return f"${float(x):.2f}"
+                    except Exception:
+                        return x
+                if "List Price" in exp_products_df.columns:
+                    exp_products_df["List Price"] = exp_products_df["List Price"].apply(format_price)
+                if "Distributor Price" in exp_products_df.columns:
+                    exp_products_df["Distributor Price"] = exp_products_df["Distributor Price"].apply(format_price)
+                cols_to_show = ["Name", "Description", "List Price", "Distributor Price", "Promo Catalogue Print?", "Buy URL"]
+                cols_to_show = [col for col in cols_to_show if col in exp_products_df.columns]
+                display_df = exp_products_df.reset_index(drop=True)
+                st.table(display_df.head(10)[cols_to_show])
+                if len(display_df) > 10:
+                    with st.expander("Show more"):
+                        st.table(display_df.iloc[10:][cols_to_show])
+            else:
+                st.info("No products found for the selected series.")
 
-                if bundle_cfg:
-                    # filter your products down to just this series
-                    bundle_df = filtered_df[filtered_df["Series"] == selected_series_exp].copy()
-                    bundle_df["_price"] = pd.to_numeric(bundle_df.get("Sale price in Australia",""), errors="coerce")
-
-                    # 2) Build mappings_data & mapping_to_parent from _all_ parent_groups
-                    mappings_data     = {}
-                    mapping_to_parent = {}
-                    for pg_cfg in bundle_cfg["parent_groups"]:
-                        pg_name = pg_cfg["name"]
-                        sel_block = bundle_cfg["mapping_selections"].get(pg_name, {})
-                        mg_name   = sel_block.get("mapping_group_name", pg_name)
-                        entries   = []
-                        for dep in sel_block.get("selected_dependents", []):
-                            entries.append({
-                                "Dependent Group": dep["name"],
-                                "Type": ("Objective" if dep.get("Objective Mapping",False) else "Subjective"),
-                                "Multiple": float(dep.get("multiple",1.0))
-                            })
-                        if entries:
-                            mappings_data[mg_name]     = pd.DataFrame(entries)
-                            mapping_to_parent[mg_name] = pg_name
-
-                    # 3) Build one selector per parent group
-                    sel_parent    = {}
-                    parent_dfs    = {}
-                    for i, pg_cfg in enumerate(bundle_cfg["parent_groups"]):
-                        pg_name = pg_cfg["name"]
-                        dfp, _  = filter_and_sum(
-                            bundle_df,
-                            pg_cfg["search_terms"],
-                            pg_cfg.get("exclusion_terms",[]),
-                            column_name="Name",
-                            sum_columns=[]
-                        )
-                        parent_dfs[pg_name] = dfp
-                        opts = [f"{r.Name} – {r.Description}" for _,r in dfp.iterrows()]
-                        opts = ["— select —"] + opts
-                        lbl = st.selectbox(f"Select product for {pg_name}", opts, key=f"bundle_sel_parent_{i}")
-                        sel_parent[pg_name] = None if lbl=="— select —" else lbl.split(" – ")[0]
-
-                    # 4) Build one selector per dependent group
-                    sel_dependent = {}
-                    dependent_dfs = {}
-                    for j, dg_cfg in enumerate(bundle_cfg["dependent_groups"]):
-                        dg_name = dg_cfg["name"]
-                        dfd, _  = filter_and_sum(
-                            bundle_df,
-                            dg_cfg["search_terms"],
-                            dg_cfg.get("exclusion_terms",[]),
-                            column_name="Name",
-                            sum_columns=[]
-                        )
-                        dependent_dfs[dg_name] = dfd
-                        opts = [f"{r.Name} – {r.Description}" for _,r in dfd.iterrows()]
-                        opts = ["— select —"] + opts
-                        lbl = st.selectbox(f"Select product for {dg_name}", opts, key=f"bundle_sel_dep_{j}")
-                        sel_dependent[dg_name] = None if lbl=="— select —" else lbl.split(" – ")[0]
-
-                    # 5) Collect your renames
-                    rename_map = {}
-                    for pg, sel in sel_parent.items():
-                        if sel: rename_map[pg] = sel
-                    for dg, sel in sel_dependent.items():
-                        if sel: rename_map[dg] = sel
-
-                    # 6) Flatten & draw one single graph (with type->label translation & multi-line node labels)
-                    type_label_map = {
-                        "Objective":  "Required",
-                        "Subjective": "Optional"
-                    }
-
-                    # rebuild the flat_df as before
-                    flat_df = flatten_mappings(mappings_data, mapping_to_parent)
-
-                    if flat_df.empty:
-                        st.info("No mappings to display for this series.")
+            # ----- Section 3: Features -----
+            st.markdown("---")
+            st.header("Features")
+            feature_indices = []
+            for col in series_info.index:
+                m = re.match(r"Feature set header (\d+)$", col)
+                if m:
+                    feature_indices.append(int(m.group(1)))
+            feature_indices.sort()
+            for i, idx in enumerate(feature_indices):
+                header = series_info.get(f"Feature set header {idx}", "")
+                desc   = series_info.get(f"Feature set description {idx}", "")
+                img    = series_info.get(f"Feature set image {idx}", "")
+                header = header if pd.notna(header) else ""
+                desc   = desc if pd.notna(desc) else ""
+                img    = img if pd.notna(img) else ""
+                if header or desc or img:
+                    if i % 2 == 0:
+                        text_col, img_col = st.columns([3, 1])
                     else:
-                        # start the graph
-                        dot = [
-                        "digraph G {",
-                        "  rankdir=LR;",
-                        "  node [fontname=\"Arial\"];"
-                        ]
-                        # 1) nodes, using HTML-style labels so we can do two lines
-                        for pg in flat_df["Parent Group"].unique():
-                            chosen = rename_map.get(pg)
-                            if chosen:
-                                # group name on the first line, chosen item in smaller font below
-                                label_html = f'<<B>{pg}</B><BR/><FONT POINT-SIZE="10">{chosen}</FONT>>'
-                            else:
-                                label_html = f'"{pg}"'
-                            dot.append(
-                            f'  "{pg}" [label={label_html}, '
-                            f'shape=box, style=filled, fillcolor=lightblue];'
-                            )
-
-                        for dg in flat_df["Dependent Group"].unique():
-                            chosen = rename_map.get(dg)
-                            if chosen:
-                                label_html = f'<<B>{dg}</B><BR/><FONT POINT-SIZE="10">{chosen}</FONT>>'
-                            else:
-                                label_html = f'"{dg}"'
-                            dot.append(
-                            f'  "{dg}" [label={label_html}, '
-                            f'shape=ellipse, style=filled, fillcolor=lightgreen];'
-                            )
-
-                        # 2) edges, translating the Type into your friendly verbs
-                        for _, r in flat_df.iterrows():
-                            orig = r["Type"]
-                            verb = type_label_map.get(orig, orig)
-                            style = "solid" if orig == "Objective" else "dashed"
-                            color = "blue"   if orig == "Objective" else "gray"
-                            dot.append(
-                            f'  "{r["Parent Group"]}" -> "{r["Dependent Group"]}" '
-                            f'[label="{verb} ({r["Multiple"]})", style="{style}", color="{color}"];'
-                            )
-
-                        dot.append("}")
-                        st.graphviz_chart("\n".join(dot), use_container_width=True)
-
-                    # 7) Total bundle price – only once a parent is selected and its required Objective mappings are chosen
-                    # 7a) which parents did the user pick?
-                    selected_parents = [pg for pg, sel in sel_parent.items() if sel]
-
-                    # 7b) if none picked, prompt and don't calculate
-                    if not selected_parents:
-                        st.info("Please select at least one parent product to begin bundle pricing.")
-                    else:
-                        # 7c) for each selected parent gather its required (Objective) dependents
-                        missing = []
-                        for pg in selected_parents:
-                            required_dgs = flat_df[
-                                (flat_df["Parent Group"] == pg) & (flat_df["Type"] == "Objective")
-                            ]["Dependent Group"].unique().tolist()
-                            for dg in required_dgs:
-                                if not sel_dependent.get(dg):
-                                    missing.append(f"{dg} (for {pg})")
-
-                        # 7d) if any required dependent is still un-selected, prompt and stop
-                        if missing:
-                            st.info(
-                                "Please select all required Objective mappings before "
-                                "we can calculate your total bundle price.  "
-                                f"Missing: {', '.join(missing)}"
-                            )
+                        img_col, text_col = st.columns([1, 3])
+                    with text_col:
+                        st.subheader(header)
+                        st.write(desc)
+                    with img_col:
+                        if img:
+                            st.image(img, width=400)
                         else:
-                            # 7e) now compute total: sum picked parents + any picked dependents (Objective or Subjective)
-                            total = 0.0
-                            for pg in selected_parents:
-                                row = parent_dfs[pg][parent_dfs[pg]["Name"] == sel_parent[pg]]
+                            st.write("No feature image available")
+                    st.markdown("---")
+
+            # ----- Section 3.5: Bundle Network (REPLACED) -----
+            st.markdown("---")
+            st.subheader("Demo Bundle")
+
+            # 1) load the JSON config for this series
+            config_dir = "bundles config files"
+            pattern    = os.path.join(config_dir, f"*{selected_series_exp}*.json")
+            cfg_files  = glob.glob(pattern)
+            if not cfg_files:
+                st.info(f"No bundle configuration found for series '{selected_series_exp}'.")
+                bundle_cfg = None
+            else:
+                try:
+                    with open(cfg_files[0], "r") as f:
+                        bundle_cfg = json.load(f)
+                except Exception as e:
+                    st.error(f"Failed to parse {cfg_files[0]}: {e}")
+                    bundle_cfg = None
+
+            if bundle_cfg:
+                # filter your products down to just this series
+                bundle_df = filtered_df[filtered_df["Series"] == selected_series_exp].copy()
+                bundle_df["_price"] = pd.to_numeric(bundle_df.get("Sale price in Australia",""), errors="coerce")
+
+                # 2) Build mappings_data & mapping_to_parent from _all_ parent_groups
+                mappings_data     = {}
+                mapping_to_parent = {}
+                for pg_cfg in bundle_cfg["parent_groups"]:
+                    pg_name = pg_cfg["name"]
+                    sel_block = bundle_cfg["mapping_selections"].get(pg_name, {})
+                    mg_name   = sel_block.get("mapping_group_name", pg_name)
+                    entries   = []
+                    for dep in sel_block.get("selected_dependents", []):
+                        entries.append({
+                            "Dependent Group": dep["name"],
+                            "Type": ("Objective" if dep.get("Objective Mapping",False) else "Subjective"),
+                            "Multiple": float(dep.get("multiple",1.0))
+                        })
+                    if entries:
+                        mappings_data[mg_name]     = pd.DataFrame(entries)
+                        mapping_to_parent[mg_name] = pg_name
+
+                # 3) Build one selector per parent group
+                sel_parent    = {}
+                parent_dfs    = {}
+                for i, pg_cfg in enumerate(bundle_cfg["parent_groups"]):
+                    pg_name = pg_cfg["name"]
+                    dfp, _  = filter_and_sum(
+                        bundle_df,
+                        pg_cfg["search_terms"],
+                        pg_cfg.get("exclusion_terms",[]),
+                        column_name="Name",
+                        sum_columns=[]
+                    )
+                    parent_dfs[pg_name] = dfp
+                    opts = [f"{r.Name} – {r.Description}" for _,r in dfp.iterrows()]
+                    opts = ["— select —"] + opts
+                    lbl = st.selectbox(f"Select product for {pg_name}", opts, key=f"bundle_sel_parent_{i}")
+                    sel_parent[pg_name] = None if lbl=="— select —" else lbl.split(" – ")[0]
+
+                # 4) Build one selector per dependent group
+                sel_dependent = {}
+                dependent_dfs = {}
+                for j, dg_cfg in enumerate(bundle_cfg["dependent_groups"]):
+                    dg_name = dg_cfg["name"]
+                    dfd, _  = filter_and_sum(
+                        bundle_df,
+                        dg_cfg["search_terms"],
+                        dg_cfg.get("exclusion_terms",[]),
+                        column_name="Name",
+                        sum_columns=[]
+                    )
+                    dependent_dfs[dg_name] = dfd
+                    opts = [f"{r.Name} – {r.Description}" for _,r in dfd.iterrows()]
+                    opts = ["— select —"] + opts
+                    lbl = st.selectbox(f"Select product for {dg_name}", opts, key=f"bundle_sel_dep_{j}")
+                    sel_dependent[dg_name] = None if lbl=="— select —" else lbl.split(" – ")[0]
+
+                # 5) Collect your renames
+                rename_map = {}
+                for pg, sel in sel_parent.items():
+                    if sel: rename_map[pg] = sel
+                for dg, sel in sel_dependent.items():
+                    if sel: rename_map[dg] = sel
+
+                # 6) Flatten & draw one single graph (with type->label translation & multi-line node labels)
+                type_label_map = {
+                    "Objective":  "Required",
+                    "Subjective": "Optional"
+                }
+
+                # rebuild the flat_df as before
+                flat_df = flatten_mappings(mappings_data, mapping_to_parent)
+
+                if flat_df.empty:
+                    st.info("No mappings to display for this series.")
+                else:
+                    # start the graph
+                    dot = [
+                    "digraph G {",
+                    "  rankdir=LR;",
+                    "  node [fontname=\"Arial\"];"
+                    ]
+                    # 1) nodes, using HTML-style labels so we can do two lines
+                    for pg in flat_df["Parent Group"].unique():
+                        chosen = rename_map.get(pg)
+                        if chosen:
+                            # group name on the first line, chosen item in smaller font below
+                            label_html = f'<<B>{pg}</B><BR/><FONT POINT-SIZE="10">{chosen}</FONT>>'
+                        else:
+                            label_html = f'"{pg}"'
+                        dot.append(
+                        f'  "{pg}" [label={label_html}, '
+                        f'shape=box, style=filled, fillcolor=lightblue];'
+                        )
+
+                    for dg in flat_df["Dependent Group"].unique():
+                        chosen = rename_map.get(dg)
+                        if chosen:
+                            label_html = f'<<B>{dg}</B><BR/><FONT POINT-SIZE="10">{chosen}</FONT>>'
+                        else:
+                            label_html = f'"{dg}"'
+                        dot.append(
+                        f'  "{dg}" [label={label_html}, '
+                        f'shape=ellipse, style=filled, fillcolor=lightgreen];'
+                        )
+
+                    # 2) edges, translating the Type into your friendly verbs
+                    for _, r in flat_df.iterrows():
+                        orig = r["Type"]
+                        verb = type_label_map.get(orig, orig)
+                        style = "solid" if orig == "Objective" else "dashed"
+                        color = "blue"   if orig == "Objective" else "gray"
+                        dot.append(
+                        f'  "{r["Parent Group"]}" -> "{r["Dependent Group"]}" '
+                        f'[label="{verb} ({r["Multiple"]})", style="{style}", color="{color}"];'
+                        )
+
+                    dot.append("}")
+                    st.graphviz_chart("\n".join(dot), use_container_width=True)
+
+                # 7) Total bundle price – only once a parent is selected and its required Objective mappings are chosen
+                # 7a) which parents did the user pick?
+                selected_parents = [pg for pg, sel in sel_parent.items() if sel]
+
+                # 7b) if none picked, prompt and don't calculate
+                if not selected_parents:
+                    st.info("Please select at least one parent product to begin bundle pricing.")
+                else:
+                    # 7c) for each selected parent gather its required (Objective) dependents
+                    missing = []
+                    for pg in selected_parents:
+                        required_dgs = flat_df[
+                            (flat_df["Parent Group"] == pg) & (flat_df["Type"] == "Objective")
+                        ]["Dependent Group"].unique().tolist()
+                        for dg in required_dgs:
+                            if not sel_dependent.get(dg):
+                                missing.append(f"{dg} (for {pg})")
+
+                    # 7d) if any required dependent is still un-selected, prompt and stop
+                    if missing:
+                        st.info(
+                            "Please select all required Objective mappings before "
+                            "we can calculate your total bundle price.  "
+                            f"Missing: {', '.join(missing)}"
+                        )
+                    else:
+                        # 7e) now compute total: sum picked parents + any picked dependents (Objective or Subjective)
+                        total = 0.0
+                        for pg in selected_parents:
+                            row = parent_dfs[pg][parent_dfs[pg]["Name"] == sel_parent[pg]]
+                            if not row.empty:
+                                total += float(row["_price"].iloc[0] or 0)
+                        for dg, dfd in dependent_dfs.items():
+                            sel = sel_dependent.get(dg)
+                            if sel:
+                                row = dfd[dfd["Name"] == sel]
                                 if not row.empty:
                                     total += float(row["_price"].iloc[0] or 0)
-                            for dg, dfd in dependent_dfs.items():
-                                sel = sel_dependent.get(dg)
-                                if sel:
-                                    row = dfd[dfd["Name"] == sel]
-                                    if not row.empty:
-                                        total += float(row["_price"].iloc[0] or 0)
 
-                            st.markdown(f"**Total Bundle Price:** ${total:.2f}")
+                        st.markdown(f"**Total Bundle Price:** ${total:.2f}")
 
-                            # 8) Bill of Materials
-                            bom = [
-                                (g, s)
-                                for g, s in list(sel_parent.items()) + list(sel_dependent.items())
-                                if s
-                            ]
-                            if bom:
-                                st.markdown("**Bill of Materials**")
-                                for group, prod in bom:
-                                    st.write(f"- {group}: {prod}")
-                else:
-                    st.info("No bundle configuration found or failed to load.")
-                # ----- Section 4: Videos -----
-                st.markdown("---")
-                st.header("Videos")
-                video_indices = []
-                for col in series_info.index:
-                    m = re.match(r"Video (\d+)$", col)
-                    if m:
-                        video_indices.append(int(m.group(1)))
-                video_indices.sort()
-                valid_video_indices = []
-                for idx in video_indices:
-                    url_field = f"Video {idx}"
-                    name_field = f"Video {idx} name"
-                    video_url = series_info.get(url_field, "")
-                    video_name = series_info.get(name_field, "")
-                    if (pd.notna(video_url) and str(video_url).strip()) or (pd.notna(video_name) and str(video_name).strip()):
-                        valid_video_indices.append(idx)
-                if valid_video_indices:
-                    for i in range(0, len(valid_video_indices), 2):
-                        chunk = valid_video_indices[i:i+2]
-                        cols = st.columns(len(chunk))
-                        for col_idx, idx in enumerate(chunk):
-                            with cols[col_idx]:
-                                name_field = f"Video {idx} name"
-                                url_field = f"Video {idx}"
-                                video_name = series_info.get(name_field, "")
-                                video_url = series_info.get(url_field, "")
-                                video_name = video_name if pd.notna(video_name) else ""
-                                video_url = video_url if pd.notna(video_url) else ""
-                                video_url = str(video_url).strip()
-                                if video_name:
-                                    st.subheader(video_name)
-                                thumbnail_url = get_youtube_thumbnail(video_url) if video_url else None
-                                if thumbnail_url:
-                                    st.image(thumbnail_url, width=200)
+                        # 8) Bill of Materials
+                        bom = [
+                            (g, s)
+                            for g, s in list(sel_parent.items()) + list(sel_dependent.items())
+                            if s
+                        ]
+                        if bom:
+                            st.markdown("**Bill of Materials**")
+                            for group, prod in bom:
+                                st.write(f"- {group}: {prod}")
+            else:
+                st.info("No bundle configuration found or failed to load.")
+            # ----- Section 4: Videos -----
+            st.markdown("---")
+            st.header("Videos")
+            video_indices = []
+            for col in series_info.index:
+                m = re.match(r"Video (\d+)$", col)
+                if m:
+                    video_indices.append(int(m.group(1)))
+            video_indices.sort()
+            valid_video_indices = []
+            for idx in video_indices:
+                url_field = f"Video {idx}"
+                name_field = f"Video {idx} name"
+                video_url = series_info.get(url_field, "")
+                video_name = series_info.get(name_field, "")
+                if (pd.notna(video_url) and str(video_url).strip()) or (pd.notna(video_name) and str(video_name).strip()):
+                    valid_video_indices.append(idx)
+            if valid_video_indices:
+                for i in range(0, len(valid_video_indices), 2):
+                    chunk = valid_video_indices[i:i+2]
+                    cols = st.columns(len(chunk))
+                    for col_idx, idx in enumerate(chunk):
+                        with cols[col_idx]:
+                            name_field = f"Video {idx} name"
+                            url_field = f"Video {idx}"
+                            video_name = series_info.get(name_field, "")
+                            video_url = series_info.get(url_field, "")
+                            video_name = video_name if pd.notna(video_name) else ""
+                            video_url = video_url if pd.notna(video_url) else ""
+                            video_url = str(video_url).strip()
+                            if video_name:
+                                st.subheader(video_name)
+                            thumbnail_url = get_youtube_thumbnail(video_url) if video_url else None
+                            if thumbnail_url:
+                                st.image(thumbnail_url, width=200)
+                            else:
+                                st.write("No thumbnail available")
+                            with st.expander("Watch Video"):
+                                if video_url:
+                                    st.video(video_url)
                                 else:
-                                    st.write("No thumbnail available")
-                                with st.expander("Watch Video"):
-                                    if video_url:
-                                        st.video(video_url)
-                                    else:
-                                        st.info("No URL provided")
-                    st.markdown("---")
-                else:
-                    st.info("No videos available")
-
-                # ----- Section 5: Internal Document -----
+                                    st.info("No URL provided")
                 st.markdown("---")
-                st.header("Internal Document")
-                doc_link = series_info.get("Internal document 1", "")
-                doc_desc = series_info.get("Internal document 1 description", "")
-                if doc_link and doc_link.strip():
-                    if doc_desc and doc_desc.strip():
-                        st.write(doc_desc)
-                    if st.button("Show Document", key="internal_doc_btn"):
-                        st.markdown(f'<a href="{doc_link}" target="_blank"><button class="buy-button">Show Internal Document</button></a>', unsafe_allow_html=True)
-                else:
-                    st.info("No internal document available")
+            else:
+                st.info("No videos available")
 
-                # ----- Section 6: Downloads -----
-                st.markdown("---")
-                st.header("Downloads")
-                download_option = st.pills("Select download type", 
-                                           options=["Datasheet link", "<Manual.|Node|.AWS Deep Link - Original>"],
-                                           key="downloads_selector")
-                if not exp_products_df.empty:
-                    download_links = []
-                    for idx, row in exp_products_df.iterrows():
-                        link = row.get(download_option, "")
-                        if pd.notna(link) and link.strip() != "":
-                            download_links.append((row.get("Name", "Product"), link.strip()))
-                    if download_links:
-                        for name, link in download_links:
-                            st.markdown(f"- [{name}]({link})")
-                    else:
-                        st.info("No download links available")
+            # ----- Section 5: Internal Document -----
+            st.markdown("---")
+            st.header("Internal Document")
+            doc_link = series_info.get("Internal document 1", "")
+            doc_desc = series_info.get("Internal document 1 description", "")
+            if doc_link and doc_link.strip():
+                if doc_desc and doc_desc.strip():
+                    st.write(doc_desc)
+                if st.button("Show Document", key="internal_doc_btn"):
+                    st.markdown(f'<a href="{doc_link}" target="_blank"><button class="buy-button">Show Internal Document</button></a>', unsafe_allow_html=True)
+            else:
+                st.info("No internal document available")
+
+            # ----- Section 6: Downloads -----
+            st.markdown("---")
+            st.header("Downloads")
+            download_option = st.pills("Select download type", 
+                                       options=["Datasheet link", "<Manual.|Node|.AWS Deep Link - Original>"],
+                                       key="downloads_selector")
+            if not exp_products_df.empty:
+                download_links = []
+                for idx, row in exp_products_df.iterrows():
+                    link = row.get(download_option, "")
+                    if pd.notna(link) and link.strip() != "":
+                        download_links.append((row.get("Name", "Product"), link.strip()))
+                if download_links:
+                    for name, link in download_links:
+                        st.markdown(f"- [{name}]({link})")
                 else:
-                    st.info("No products to download.")
-        else:
-            st.info("No series available for New Product experience.")
+                    st.info("No download links available")
+            else:
+                st.info("No products to download.")
     else:
-        # ---- Original Display: Group products by Category and then Series (Expander or Table View) ----
-        for category, cat_data in filtered_df.groupby("Category", sort=False):
-            st.markdown(f'<div class="section-header"><h2>Category: {category}</h2></div>', unsafe_allow_html=True)
-            for series, series_data in cat_data.groupby("Series", sort=False):
-                series_image_html = ""
-                if series in series_images:
-                    series_image_html = f'<img src="{series_images[series]}" class="series-image" alt="{series}">'
-                desc_html = ""
-                if series in series_descriptions:
-                    desc_html = f'<p>{series_descriptions[series]}</p>'
-                st.markdown(f'''
-                    <div class="subsection-header">
-                        {series_image_html}
-                        <div class="series-info">
-                            <h3>Series: {series}</h3>
-                            {desc_html}
-                        </div>
+        st.info("No series available for New Product experience.")
+# ---- Original Display: Group products by Category and then Series (Expander or Table View) ----
+else:
+    for category, cat_data in filtered_df.groupby("Category", sort=False):
+        st.markdown(f'<div class="section-header"><h2>Category: {category}</h2></div>', unsafe_allow_html=True)
+        for series, series_data in cat_data.groupby("Series", sort=False):
+            series_image_html = ""
+            if series in series_images:
+                series_image_html = f'<img src="{series_images[series]}" class="series-image" alt="{series}">'
+            desc_html = ""
+            if series in series_descriptions:
+                desc_html = f'<p>{series_descriptions[series]}</p>'
+            st.markdown(f'''
+                <div class="subsection-header">
+                    {series_image_html}
+                    <div class="series-info">
+                        <h3>Series: {series}</h3>
+                        {desc_html}
                     </div>
-                ''', unsafe_allow_html=True)
-                if view_mode == "Expander View":
-                    for idx, row in series_data.iterrows():
-                        sku_clean = re.sub(r'\s+', '-', row["SKU"].strip())
-                        buy_url = f"https://store.omron.com.au/product/{sku_clean}"
-                        details_html = f"""
+                </div>
+            ''', unsafe_allow_html=True)
+            if view_mode == "Expander View":
+                for idx, row in series_data.iterrows():
+                    sku_clean = re.sub(r'\s+', '-', row["SKU"].strip())
+                    buy_url = f"https://store.omron.com.au/product/{sku_clean}"
+                    details_html = f"""
 <details>
-  <summary>
-    <div>
-      <h5>{row['Name']}</h5>
-      <p><strong>Description:</strong> {row['Description']}</p>
-      <p><strong>List Price:</strong> <span class="price">${row['List Price']}</span></p>
-      <p><strong>Distributor Price:</strong> <span class="price">${row['Distributor Price']}</span></p>
-      <a href="{buy_url}" target="_blank">
-         <button class="buy-button">Buy Now</button>
-      </a>
-    </div>
-  </summary>
-  <div style="margin-top: 10px;">
+<summary>
+<div>
+  <h5>{row['Name']}</h5>
+  <p><strong>Description:</strong> {row['Description']}</p>
+  <p><strong>List Price:</strong> <span class="price">${row['List Price']}</span></p>
+  <p><strong>Distributor Price:</strong> <span class="price">${row['Distributor Price']}</span></p>
+  <a href="{buy_url}" target="_blank">
+     <button class="buy-button">Buy Now</button>
+  </a>
+</div>
+</summary>
+<div style="margin-top: 10px;">
 """
-                        if pd.notna(row["Featured image"]):
-                            details_html += f'<img src="{row["Featured image"]}" width="200" alt="Product Image">'
-                        else:
-                            details_html += "<p>No image available</p>"
-                        details_html += f'<p><strong>SKU:</strong> {row["SKU"]}</p>'
-                        details_html += "</div></details>"
-                        st.markdown(details_html, unsafe_allow_html=True)
-                else:  # Table View
-                    table_df = series_data.copy()
-                    table_df["Buy URL"] = table_df["SKU"].apply(
-                        lambda sku: "https://store.omron.com.au/product/" + re.sub(r"\s+", "-", sku.strip())
-                    )
-                    def format_price(x):
-                        try:
-                            return f"${float(x):.2f}"
-                        except Exception:
-                            return x
-                    if "List Price" in table_df.columns:
-                        table_df["List Price"] = table_df["List Price"].apply(format_price)
-                    if "Distributor Price" in table_df.columns:
-                        table_df["Distributor Price"] = table_df["Distributor Price"].apply(format_price)
-                    cols_to_show = ["Name", "Description", "List Price", "Distributor Price", "Promo Catalogue Print?", "Buy URL"]
-                    cols_to_show = [col for col in cols_to_show if col in table_df.columns]
-                    display_df = table_df.reset_index(drop=True)
-                    st.table(display_df.head(10)[cols_to_show])
-                    if len(display_df) > 10:
-                        with st.expander("Show more"):
-                            st.table(display_df.iloc[10:][cols_to_show])
+                    if pd.notna(row["Featured image"]):
+                        details_html += f'<img src="{row["Featured image"]}" width="200" alt="Product Image">'
+                    else:
+                        details_html += "<p>No image available</p>"
+                    details_html += f'<p><strong>SKU:</strong> {row["SKU"]}</p>'
+                    details_html += "</div></details>"
+                    st.markdown(details_html, unsafe_allow_html=True)
+            else:  # Table View
+                table_df = series_data.copy()
+                table_df["Buy URL"] = table_df["SKU"].apply(
+                    lambda sku: "https://store.omron.com.au/product/" + re.sub(r"\s+", "-", sku.strip())
+                )
+                def format_price(x):
+                    try:
+                        return f"${float(x):.2f}"
+                    except Exception:
+                        return x
+                if "List Price" in table_df.columns:
+                    table_df["List Price"] = table_df["List Price"].apply(format_price)
+                if "Distributor Price" in table_df.columns:
+                    table_df["Distributor Price"] = table_df["Distributor Price"].apply(format_price)
+                cols_to_show = ["Name", "Description", "List Price", "Distributor Price", "Promo Catalogue Print?", "Buy URL"]
+                cols_to_show = [col for col in cols_to_show if col in table_df.columns]
+                display_df = table_df.reset_index(drop=True)
+                st.table(display_df.head(10)[cols_to_show])
+                if len(display_df) > 10:
+                    with st.expander("Show more"):
+                        st.table(display_df.iloc[10:][cols_to_show])
 
 # ------------------------- Hide Streamlit Menu -------------------------
 # hide_st_style = """
