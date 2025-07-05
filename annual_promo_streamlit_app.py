@@ -161,7 +161,7 @@ def generate_spec_table_html(df, config):
             index=index_cols,
             columns=config['pivot_col'],
             values=config['pivot_value_col'],
-            aggfunc='first'
+            aggfunc=lambda x: '<br>'.join(x)
         ).reset_index()
     except Exception as e:
         return f"<p>Error during data pivoting: {e}</p>"
