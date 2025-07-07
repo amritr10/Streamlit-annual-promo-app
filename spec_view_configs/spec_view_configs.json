@@ -1,0 +1,161 @@
+{
+    "Inductive Sensors": {
+        "default_config": {
+            "group_by_cols": [
+                "Size ;LOV",
+                "Mounting type ;LOV",
+                "Connection method ;LOV",
+                "Operation mode ;LOV"
+            ],
+            "display_col": "Sensing distance ;number",
+            "pivot_required": true,
+            "pivot_col": "Output type ;LOV",
+            "pivot_value_col": "Name"
+        },
+        "series_configs": []
+    },
+    "Photoelectric Sensors": {
+        "default_config": {
+            "group_by_cols": [
+                "Sensing method ;LOV",
+                "Sensing distance ;number"
+            ],
+            "display_col": "Connection method ;LOV",
+            "pivot_required": true,
+            "pivot_col": "Output type ;LOV",
+            "pivot_value_col": "Name"
+        },
+        "series_configs": []
+    },
+    "Measurement Sensors": {
+        "series_configs": [
+            {
+                "series": [
+                    "ZP-L",
+                    "ZX-L",
+                    "ZX2"
+                ],
+                "group_by_cols": [
+                    "Measuring range length ;range"
+                ],
+                "display_col": "Geometrical resolution ;number",
+                "pivot_required": false,
+                "pivot_col": null,
+                "pivot_value_col": null
+            }
+        ]
+    },
+    "Safety Sensors": {
+        "series_configs": [
+            {
+                "series": [
+                    "F3SG-SR/PG"
+                ],
+                "group_by_cols": [
+                    "Type of protection ;LOV",
+                    "Degree of protection (IP) ;LOV"
+                ],
+                "display_col": "Overall length of sensor ;number",
+                "pivot_required": false,
+                "pivot_col": null,
+                "pivot_value_col": null
+            }
+        ]
+    },
+    "Machine Automation Controllers": {
+        "series_configs": [
+            {
+                "series": [
+                    "NX1P"
+                ],
+                "group_by_cols": [
+                    "Number of digital inputs ;number",
+                    "Number of digital outputs ;number",
+                    "Number of serial option boards ;number"
+                ],
+                "display_col": null,
+                "pivot_required": false,
+                "pivot_col": null,
+                "pivot_value_col": null
+            },
+            {
+                "series": [
+                    "NX1"
+                ],
+                "group_by_cols": [
+                    "Max. number of expansion units ;number",
+                    "Supports DB connection ;logical",
+                    "Supports OPC-UA ;logical",
+                    "Max. number of synchronous axes ;number"
+                ],
+                "display_col": null,
+                "pivot_required": false,
+                "pivot_col": null,
+                "pivot_value_col": null
+            }
+        ]
+    },
+    "Programmable Logic Controllers (PLC)": {
+        "series_configs": [
+            {
+                "series": [
+                    "CP2E"
+                ],
+                "group_by_cols": [
+                    "Supply voltage type ;LOV",
+                    "Number of analog inputs ;number",
+                    "Number of analog outputs ;number",
+                    "Communication option(s) ;LOV"
+                ],
+                "display_col": null,
+                "pivot_required": false,
+                "pivot_col": null,
+                "pivot_value_col": null
+            },
+            {
+                "series": [
+                    "CP2E"
+                ],
+                "group_by_cols": [
+                    "Supply voltage type ;LOV",
+                    "Number of analog inputs ;number",
+                    "Number of analog outputs ;number"
+                ],
+                "display_col": null,
+                "pivot_required": false,
+                "pivot_col": null,
+                "pivot_value_col": null
+            },
+            {
+                "series": [
+                    "CP2E"
+                ],
+                "group_by_cols": [
+                    "Supply voltage type ;LOV",
+                    "Number of analog inputs ;number",
+                    "Number of analog outputs ;number"
+                ],
+                "display_col": null,
+                "pivot_required": false,
+                "pivot_col": null,
+                "pivot_value_col": null
+            }
+        ]
+    },
+    "Input and Output (I/O)": {
+        "series_configs": [
+            {
+                "series": [
+                    "NX I/O Series"
+                ],
+                "group_by_cols": [
+                    "Type of module ;LOV"
+                ],
+                "display_col": null,
+                "pivot_required": false,
+                "pivot_col": null,
+                "pivot_value_col": null
+            }
+        ]
+    }
+}

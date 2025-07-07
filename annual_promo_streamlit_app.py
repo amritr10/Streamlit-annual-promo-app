@@ -10,32 +10,30 @@ import json
 from datetime import datetime
 
 # ==================== SPECIFICATION VIEW CONFIGURATION ====================
-# Define the layout for the specification view for different product groups.
-# This makes it easy to add new layouts without changing the code.
-#
-# Structure:
-# "Product Group Name": {
-#     "group_by_cols": [List of columns to group by, creating merged rows],
-#     "display_col": "The main column to display for each unique row",
-#     "pivot_col": "Column to create new columns from (e.g., 'PNP', 'NPN')",
-#     "pivot_value_col": "The column containing the model names to be pivoted"
-# }
-SPEC_VIEW_CONFIG = {
-    "Inductive Sensors": {
-        "group_by_cols": ["Size ;LOV", "Mounting type ;LOV", "Connection method ;LOV"],
-        "display_col": "Sensing distance ;number",
-        "pivot_col": "Output type ;LOV",
-        "pivot_value_col": "Name"
-    },
-    "Photoelectric Sensors": {
-        "group_by_cols": ["Sensing method ;LOV", "Sensing distance ;number"],
-        "display_col": "Connection method ;LOV",
-        "pivot_col": "Output type ;LOV",
-        "pivot_value_col": "Name"
-    }
-    # You can add configurations for other Product Groups here
-    # "Another Product Group": { ... }
-}
+def load_spec_view_config():
+    """Loads the specification view configuration from the JSON file."""
+    config_path = os.path.join("spec_view_configs", "spec_view_configs.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            return json.load(f)
+    return {}
+
+SPEC_VIEW_CONFIG = load_spec_view_config()
+
+def get_spec_config_for_series(product_group, series_name):
+    """
+    Get the specific configuration for a given product group and series.
+    If a specific configuration for the series is not found, it returns the default for the product group.
+    """
+    if product_group in SPEC_VIEW_CONFIG:
+        product_group_config = SPEC_VIEW_CONFIG[product_group]
+        # Check for series-specific configuration
+        for config in product_group_config.get("series_configs", []):
+            if series_name in config.get("series", []):
+                return config
+        # Return default config for the product group if no series-specific one is found
+        return product_group_config.get("default_config")
+    return None
 
 # ------------------------- Helper Functions -------------------------
 def reset_all_filters():
@@ -58,6 +56,7 @@ def reset_all_filters():
     st.session_state["selected_category"] = "All Categories"
     st.session_state["view_mode"] = "Table View"
     st.session_state["promo_catalogue_filter"] = False
+    st.session_state["selected_lifecycle"] = "All"
     st.rerun()
 
 def search_callback():
@@ -69,6 +68,9 @@ def search_callback():
         st.session_state.search_query = st.session_state.search_bar_input.strip()
         st.session_state.search_bar_input = ""
 
+def _clear_selected_series():
+    """Clear selected series when product group or lifecycle changes."""
+    st.session_state["selected_series"] = []
 # ------------------------- YouTube Thumbnail Utility -------------------------
 def get_youtube_thumbnail(url):
     """Extracts the video id from a YouTube URL and returns the URL for its thumbnail image."""
@@ -140,63 +142,94 @@ def build_network_dot(flat_df):
 def generate_spec_table_html(df, config):
     """
     Generates an HTML table with merged rows based on the provided configuration.
+    Handles both pivoted and non-pivoted views.
     """
-    # --- 1. Data Preparation and Pivoting ---
-    all_cols = config['group_by_cols'] + [config['display_col'], config['pivot_col'], config['pivot_value_col']]
-    
-    # Check if all required columns exist in the dataframe
-    missing_cols = [col for col in all_cols if col not in df.columns]
+    # --- 1. Configuration and Column Validation ---
+    group_by_cols = config.get("group_by_cols", [])
+    display_col = config.get("display_col")  # Can be None
+    pivot_required = config.get("pivot_required", False)
+
+    required_cols = group_by_cols.copy()
+    if display_col:
+        required_cols.append(display_col)
+
+    if pivot_required:
+        pivot_col = config.get("pivot_col")
+        pivot_value_col = config.get("pivot_value_col")
+        if not pivot_col or not pivot_value_col:
+            return "<p>Error: Pivot is required, but 'pivot_col' or 'pivot_value_col' is missing in the configuration.</p>"
+        required_cols.extend([pivot_col, pivot_value_col])
+    else:
+        # If no pivot, we need the 'Name' column
+        if "Name" not in df.columns:
+             return "<p>Error: 'Name' column is required for non-pivoted view but is missing.</p>"
+
+    missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         return f"<p>Error: The following required columns are missing for this view: {', '.join(missing_cols)}</p>"
 
-    # Create a working copy
-    work_df = df[all_cols].copy().dropna(subset=[config['pivot_col'], config['pivot_value_col']])
-    
-    # Define the index for pivoting
-    index_cols = config['group_by_cols'] + [config['display_col']]
+    # --- 2. Data Preparation ---
+    work_df = df[required_cols + (["Name"] if not pivot_required and "Name" in df.columns else [])].copy()
 
-    # Pivot the table
-    try:
-        pivot_df = work_df.pivot_table(
-            index=index_cols,
-            columns=config['pivot_col'],
-            values=config['pivot_value_col'],
-            aggfunc=lambda x: '<br>'.join(x)
-        ).reset_index()
-    except Exception as e:
-        return f"<p>Error during data pivoting: {e}</p>"
+    if pivot_required:
+        # --- 2a. Pivoted View ---
+        work_df = work_df.dropna(subset=[config['pivot_col'], config['pivot_value_col']])
+        index_cols = group_by_cols + ([display_col] if display_col else [])
+        
+        try:
+            pivot_df = work_df.pivot_table(
+                index=index_cols,
+                columns=config['pivot_col'],
+                values=config['pivot_value_col'],
+                aggfunc=lambda x: '<br>'.join(x)
+            ).reset_index()
+        except Exception as e:
+            return f"<p>Error during data pivoting: {e}</p>"
 
-    # Fill NaN values for model columns
-    for col in work_df[config['pivot_col']].unique():
-        if col in pivot_df.columns:
-            pivot_df[col] = pivot_df[col].fillna('')
+        # Fill NaN values for model columns
+        for col in work_df[config['pivot_col']].unique():
+            if col in pivot_df.columns:
+                pivot_df[col] = pivot_df[col].fillna('')
+        
+        final_df = pivot_df
+        pivot_headers = sorted([col for col in final_df.columns if col not in index_cols])
 
-    # --- 2. Calculate Rowspans ---
-    rowspan_cols = config['group_by_cols']
+    else:
+        # --- 2b. Non-Pivoted View ---
+        grouping_cols = group_by_cols + ([display_col] if display_col else [])
+        if not grouping_cols:
+             # Non-pivoted view requires at least one column to group by.
+             return "<p>Error: Non-pivoted view requires at least one 'group_by_cols'.</p>"
+        
+        # Aggregate model names
+        final_df = work_df.groupby(grouping_cols).agg({
+            "Name": lambda x: "<br>".join(x)
+        }).reset_index()
+        pivot_headers = ["Name"] # The column with model names
+
+    # --- 3. Calculate Rowspans ---
+    rowspan_cols = group_by_cols
     rowspans = {}
     for i, col in enumerate(rowspan_cols):
-        # Group by the current column and all preceding columns
         grouping = rowspan_cols[:i+1]
-        counts = pivot_df.groupby(grouping).size()
-
-        # For the first grouping column, the keys from `to_dict()` are not tuples.
-        # We convert them to single-element tuples for consistent lookups later on,
-        # as the lookup key will always be a tuple.
+        counts = final_df.groupby(grouping).size()
         if i == 0:
             rowspans[col] = {(k,): v for k, v in counts.to_dict().items()}
         else:
             rowspans[col] = counts.to_dict()
 
-    # --- 3. Build HTML ---
-    # Helper to clean column names for display (e.g., "Size ;LOV" -> "Size")
+    # --- 4. Build HTML ---
     def clean_header(name):
         return name.split(';')[0].strip().title()
 
-    # Table Headers
-    headers = [clean_header(c) for c in config['group_by_cols']]
-    headers.append(clean_header(config['display_col']))
-    pivot_headers = sorted([col for col in pivot_df.columns if col not in index_cols])
-    headers.extend(pivot_headers)
+    headers = [clean_header(c) for c in group_by_cols]
+    if display_col:
+        headers.append(clean_header(display_col))
+    
+    if pivot_required:
+        headers.extend(pivot_headers)
+    else:
+        headers.append("Model Name") # Header for the 'Name' column
 
     html = """
     <style>
@@ -231,27 +264,25 @@ def generate_spec_table_html(df, config):
         html += f"<th>{h}</th>"
     html += "</tr></thead><tbody>"
 
-    # Table Body
     last_values = {col: None for col in rowspan_cols}
-    for index, row in pivot_df.iterrows():
+    for index, row in final_df.iterrows():
         html += "<tr>"
         # Grouping columns with rowspan
         for i, col in enumerate(rowspan_cols):
             current_val = row[col]
-            # Check if the value (and all parent values) has changed
             key = tuple(row[c] for c in rowspan_cols[:i+1])
             if last_values[col] != key:
                 span = rowspans[col].get(key, 1)
                 html += f'<td rowspan="{span}">{current_val}</td>'
                 last_values[col] = key
-                # Reset tracking for child columns
                 for child_col in rowspan_cols[i+1:]:
                     last_values[child_col] = None
         
-        # Display column (no rowspan)
-        html += f"<td>{row[config['display_col']]}</td>"
+        # Display column (if it exists)
+        if display_col:
+            html += f"<td>{row[display_col]}</td>"
 
-        # Pivoted value columns
+        # Pivoted value columns or Name column
         for p_col in pivot_headers:
             html += f"<td class='font-mono'>{row[p_col]}</td>"
 
@@ -488,7 +519,7 @@ st.markdown('<div class="promo-header"><h1>Key Products 2025</h1></div>', unsafe
 st.markdown('<div class="proof of concept, internal use"><h2>This website is a proof of concept, internal use only</h2></div>', unsafe_allow_html=True)
 
 # ------------------------- Load Product Data -------------------------
-csv_file = "key_products_12_05_25.csv"
+csv_file = "merged_eu_pim_with_key_products.csv"
 try:
     df = pd.read_csv(csv_file)
     df = df.dropna(subset=["Category", "Series"])
@@ -530,8 +561,10 @@ with col1:
     selected_lifecycle = st.segmented_control(
          label="Product Life Cycle",
          options=lifecycle_values,
-         key="selected_lifecycle"
-    )
+         key="selected_lifecycle",
+         default=lifecycle_values[0],
+         on_change=_clear_selected_series
+     )
 with col2:
     st.text_input(
          "Search Model Name", 
@@ -577,10 +610,11 @@ if reset_condition_sidebar:
 if "Product Group" in df.columns:
     product_groups = sorted(df["Product Group"].dropna().unique())
     selected_product_group = st.sidebar.selectbox(
-         "Select Product Group", 
+         "Select Product Group",
          options=["All Product Groups"] + product_groups,
-         key="selected_product_group"
-    )
+         key="selected_product_group",
+         on_change=_clear_selected_series
+     )
     if selected_product_group != "All Product Groups":
         df = df[df["Product Group"] == selected_product_group].copy()
 else:
@@ -878,12 +912,32 @@ elif view_mode == "Specification View":
     if selected_product_group == "All Product Groups":
         st.warning("Please select a specific Product Group from the sidebar to use the Specification View.")
     else:
-        config = SPEC_VIEW_CONFIG.get(selected_product_group)
-        if config:
-            html_table = generate_spec_table_html(filtered_df, config)
-            st.markdown(html_table, unsafe_allow_html=True)
+        # Get the first series in the filtered dataframe to find the config
+        if not filtered_df.empty and "Series" in filtered_df.columns:
+            current_series = filtered_df["Series"].iloc[0]
+            config = get_spec_config_for_series(selected_product_group, current_series)
+            
+            if config:
+                if config.get("pivot_required", False):
+                    pivot_col = config.get("pivot_col")
+                    pivot_value_col = config.get("pivot_value_col")
+                    mask_missing = filtered_df[pivot_col].isna() | filtered_df[pivot_value_col].isna()
+                else:
+                    mask_missing = pd.Series(False, index=filtered_df.index)
+                good_df = filtered_df[~mask_missing].copy()
+                missing_df = filtered_df[mask_missing].copy()
+                if not good_df.empty:
+                    html_table = generate_spec_table_html(good_df, config)
+                    st.markdown(html_table, unsafe_allow_html=True)
+                else:
+                    st.info("No products with all required specifications to display.")
+                if not missing_df.empty:
+                    st.markdown("### Models Missing Essential Specifications")
+                    st.dataframe(missing_df[["Name"]], use_container_width=True)
+            else:
+                st.info(f"The Specification View is not configured for the series in the '{selected_product_group}' Product Group.")
         else:
-            st.info(f"The Specification View is not configured for the '{selected_product_group}' Product Group.")
+            st.info("No products to display for the Specification View.")
 
 # ---- Product Experience View ----
 elif selected_lifecycle == "New Product" and view_mode == "Product Experience View":
